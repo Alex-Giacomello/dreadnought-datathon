@@ -49,4 +49,4 @@ After building, you can delete the temporary files created by PyInstaller:
 
 - The installer and uninstaller are GUI applications.
 - The installer will create desktop shortcuts for both the application and the uninstaller.
-- Both installer and uninstaller use the same code structure for consistency.
+
