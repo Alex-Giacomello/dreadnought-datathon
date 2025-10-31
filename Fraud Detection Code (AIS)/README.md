@@ -48,6 +48,7 @@ This system analyzes AIS (Automatic Identification System) data to detect potent
 6. **Null Values**: Ships with missing data in critical fields (Latitude, Longitude, Speed, Heading, COG)
 
 ## Installation
+Ensure the executable has been built before attempting Install.  See [Building the Executable](#building-the-executable) section for details.
 
 ### Easy Installation (Windows)
 
@@ -114,7 +115,7 @@ FORMAT = %Y-%m-%d %H:%M:%S
 
 ### Ship Type Selection
 
-Instead of using a min/max range, you can now specify exactly which ship types to analyze using the SELECTED_SHIP_TYPES parameter. Ship types include:
+You can specify exactly which ship types to analyze using the SELECTED_SHIP_TYPES parameter. Ship types include:
 
 - **Cargo Ships (70-79)**:
   - 70: Cargo, all ships of this type
@@ -170,8 +171,8 @@ python shipping_fraud_detection.py --days 5 --config config.ini --ship-types "70
 Options:
 - `--days`: Number of days to analyze (default: 5)
 - `--config`: Path to configuration file (default: config.ini)
-- `--ship-types`: Comma-separated list of ship types to analyze
-- `--no-dask`: Disable Dask processing for large files
+- `--ship-types`: Comma-separated list of ship types to analyze (for example [70, 80, 81]
+- `--no-dask`: Disable Dask processing for large files (disabling DASK is NOT recommended)
 - `--debug`: Enable debug logging
 
 ### As a Module
