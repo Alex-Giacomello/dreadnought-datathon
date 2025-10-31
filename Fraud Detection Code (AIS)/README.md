@@ -118,7 +118,7 @@ FORMAT = %Y-%m-%d %H:%M:%S
 You can specify exactly which ship types to analyze using the SELECTED_SHIP_TYPES parameter. Ship types include:
 
 - **Cargo Ships (70-79)**:
-  - 70: Cargo, all ships of this type
+  - 70: Cargo, General category for ships of this type
   - 71: Cargo, Hazardous category A
   - 72: Cargo, Hazardous category B
   - 73: Cargo, Hazardous category C
@@ -127,7 +127,7 @@ You can specify exactly which ship types to analyze using the SELECTED_SHIP_TYPE
   - 79: Cargo, No additional information
 
 - **Tanker Ships (80-89)**:
-  - 80: Tanker, all ships of this type
+  - 80: Tanker, General category for ships of this type
   - 81: Tanker, Hazardous category A
   - 82: Tanker, Hazardous category B
   - 83: Tanker, Hazardous category C
