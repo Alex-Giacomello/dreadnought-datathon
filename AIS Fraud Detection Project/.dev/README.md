@@ -367,7 +367,8 @@ python -m unittest test_shipping_fraud_detection.py
 
 ## Support
 
-For assistance with the AIS Shipping Fraud Detection System, please contact your system administrator or IT support team.
+For assistance with the AIS Shipping Fraud Detection System, please contact your system administrator or IT support team. 
+Yeah, Right, just kidding, but let me know what you need/find. -Chris
 
 ---
 
