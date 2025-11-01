@@ -1,0 +1,9 @@
+2025-11-01 13:57:17,741 - shipping_fraud_detection - WARNING - Config file nonexistent_file.ini not found. Using default values.
+2025-11-01 13:57:17,800 - shipping_fraud_detection - INFO - Selecting files between 2025-10-30 and 2025-11-01
+2025-11-01 13:57:17,827 - shipping_fraud_detection - INFO - Selecting files between 2025-10-31 and 2025-11-01
+2025-11-01 13:57:17,828 - shipping_fraud_detection - INFO - Loading data from C:\Users\616180\AppData\Local\Temp\1\tmpoe4861pc\2025-10-31.csv
+2025-11-01 13:57:17,833 - shipping_fraud_detection - ERROR - Error in C:\Users\616180\AppData\Local\Temp\1\tmpoe4861pc\2025-10-31.csv: Missing required columns: COG
+2025-11-01 14:03:45,969 - shipping_fraud_detection - WARNING - Config file nonexistent_file.ini not found. Using default values.
+2025-11-01 14:03:46,048 - shipping_fraud_detection - INFO - Selecting files between 2025-10-30 and 2025-11-01
+2025-11-01 14:03:46,081 - shipping_fraud_detection - INFO - Selecting files between 2025-10-31 and 2025-11-01
+2025-11-01 14:03:46,082 - shipping_fraud_detection - INFO - Loading data from C:\Users\616180\AppData\Local\Temp\1\tmp51j5br_i\2025-10-31.csv
