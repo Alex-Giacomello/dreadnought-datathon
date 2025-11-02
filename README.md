@@ -1,8 +1,10 @@
 # dreadnought-datathon
 
 ## **1 NOV 2025 updates and bug fixes**
--File Structure updated to include \.Dev, \.Test, and \.Prod 
--Code Version 0.3 moved from \.Prod to \.Test 
+
+File Structure updated to include \.Dev, \.Test, and \.Prod 
+
+Code Version 0.3 moved from \.Prod to \.Test 
 
 Code Updates in Version 0.3:
   1. Date selection changed from unspecified number to a discrete date selection
