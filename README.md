@@ -1,6 +1,6 @@
 # dreadnought-datathon
 
-## **NOV 2025 updates and bug fixes**
+## **1 NOV 2025 updates and bug fixes**
 
 Code Updates:
   1. Date selection changed from unspecified number to a discrete date selection
