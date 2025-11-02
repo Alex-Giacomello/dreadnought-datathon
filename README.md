@@ -1,5 +1,13 @@
 # dreadnought-datathon
 
+## **2 NOV 2025 update on .dev code**
+1. Working on code base to implement this as multi-platform to enable test/run on non-windows systems
+2. Working on S3 data connectivity
+
+
+
+
+
 ## **1 NOV 2025 updates and bug fixes**
 
 File Structure updated to include \.Dev, \.Test, and \.Prod 
