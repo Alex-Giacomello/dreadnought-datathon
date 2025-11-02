@@ -1,10 +1,10 @@
 # dreadnought-datathon
 
-*NOV 2025*
+NOV 2025
 
-*Current updates/bug fixes*
+Current updates/bug fixes
 
-###*1. Code Updates:*
+Code Updates:
   1. Date selection changed from unspecified to a date selection
   2. Updated Requirements and dependencies between scripts
   3. Reduced the number of seperate scripts
