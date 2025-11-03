@@ -25,32 +25,9 @@ WORKAROUND: To run, Shipping Fraud Detection.exe must be copied back to test fol
 
 3) Code now can review both .csv and .parquet file types
 
-4) Shipping fraud detection addresses columns that exactly match the data format from EDL:
+4) Shipping fraud detection addresses columns that exactly match the data format from EDL
 
-Data columns (total 17 columns):
- #   Column            Dtype  
----  ------            -----  
- 0   MMSI              uint64 
- 1   BaseDateTime      object 
- 2   LAT               float64
- 3   LON               float64
- 4   SOG               float64
- 5   COG               float64
- 6   Heading           float64
- 7   VesselName        object 
- 8   IMO               object 
- 9   CallSign          object 
- 10  VesselType        object 
- 11  Status            object 
- 12  Length            float64
- 13  Width             float64
- 14  Draft             float64
- 15  Cargo             float64
- 16  TransceiverClass  object 
-
-5) ISSUE (02NOV2025): GUI needs instructions.
-
-Adjusted the GUI Tabs to a more logical order.
+5) Adjusted the GUI Tabs to a more logical order.
 Added basic overview (Purpose) and Instructions to the first tab:
 "This system analyzes Automatic Identification System (AIS) data to detect potential fraudulent shipping activities. It does so by identifying anomalies such as vessels turning off their AIS beacons (sudden disappearances), sudden reappearances, unusual travel distances, and large inconsistencies between reported Course Over Ground (COG) and Heading.  Users have the option of examining data over specific date ranges, or examining data leading up to the current date.  
 NOTE: In this test implementation only data from 1 OCT 2024 to 31 MAR 2025 is available for use.
