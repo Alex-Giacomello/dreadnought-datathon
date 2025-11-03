@@ -8,6 +8,11 @@
 - [3. Requirements and Dependencies Update](#requirements-and-dependencies-update)
 - [4. Project has grown in size and complexity](#project-has-grown-in-size-and-complexity)
 
+## Bug Fixes in .dev
+
+1. ISSUE (02NOV2025): Executable files take a LONG time (~45 sec.) to open - Added loading screen to let user see progress 
+
+2. ISSUE (02NOV2025): Program needs S3 integration - Updatesd script to integrate multiple methods
 
 ## Long Loading items:
 
@@ -114,6 +119,11 @@ Maintained all existing dependencies with their version requirements
 
 -Created a ProjectFileList.txt to ensure all required project files are tracked.
 
+## Bug Fixes in .dev
+
+1. ISSUE (02NOV2025): Executable files take a LONG time (~45 sec.) to open - Added loading screen to let user see progress 
+
+2. ISSUE (02NOV2025): Program needs S3 integration - Updatesd script to integrate multiple methods
 
 
 
