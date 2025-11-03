@@ -3,6 +3,11 @@
 **3 NOV 2025 updates**
 
 ## **Updates to .dev**
+## **1.  Long Loading items:**
+## **2.  S3 Integration**
+## **3. Requirements and Dependencies Update**
+## **4. Project has grown in size and complexity
+
 
 ## **Long Loading items:**
 Created a loading splash screen to show user that the file is running.
