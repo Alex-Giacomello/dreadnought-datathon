@@ -1,10 +1,10 @@
 # dreadnought-datathon
 
-## **3 NOV 2025 updates**
+**3 NOV 2025 updates**
 
 ## **Updates to .dev
 
-**Long Loading items:**
+## **Long Loading items:**
 Created a loading splash screen to show user that the file is running.
 Created splash_screen.py
  - A module that displays SFDLoad.png with a progress bar
@@ -32,7 +32,7 @@ Notes:
 -The solution works with PyInstaller, which you're already using for your builds
 -This provides the visual cue you requested without needing to actually speed up the loading time.
 
-**S3 Integration**
+## **S3 Integration**
 The project needs to access to the account "Cakes and Tensors (372184463766)" with "BAHSSO_372184463766_Dreadnought" to access AWS resources programmatically or from the AWS CLI. 
 
 AWS recommends that configure the AWS CLI to retrieve them automatically using the "aws configure sso"  command. 
@@ -75,7 +75,7 @@ Updated shipping_fraud_detection.py to:
 -The implementation is now complete and supports all the requested authentication methods. The GUI allows users to select their preferred method and enter the necessary credentials, which are then used for testing the connection and for actual data processing.
 
 
-**Requirements and Dependencies Update**
+## **Requirements and Dependencies Update**
 1. Updated the project's dependencies to include all necessary packages for the new splash screen functionality.
 
 New Requirements
@@ -103,7 +103,7 @@ Maintained all existing dependencies with their version requirements
 -Provides instructions for building with the splash screen
 -Includes customization options and troubleshooting tips
 
-**Project has grown in size and complexity
+## **Project has grown in size and complexity
 -Created a ProjectFileList.txt to ensure all required project files are tracked.
 
 
