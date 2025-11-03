@@ -2,7 +2,7 @@
 
 ## **2 NOV 2025 updates**
 
-**Updates to \.test**
+## **Updates to \.test**
 
 KNOWN BUGS
 1) ISSUE (02NOV2025): Once created, the executables Cannot be run from \dist folder, returns the following error:
