@@ -1,5 +1,113 @@
 # dreadnought-datathon
 
+## **3 NOV 2025 updates**
+
+## **Updates to .dev
+
+**Long Loading items:**
+Created a loading splash screen to show user that the file is running.
+Created splash_screen.py
+ - A module that displays SFDLoad.png with a progress bar
+Created launch_with_splash.py
+ - A launcher script that shows the splash screen while the main app loads
+Updated AnomalyDetectGUI_new.py
+ - Added a proper main()  function to support integration with the splash screen
+Created splash_build.spec
+ - A PyInstaller spec file for building the .exe with the splash screen
+Created build_with_splash.py
+ - A build script to easily create the executable
+
+How to Build the Executable:
+1. Make sure SFDLoad.png is in the .dev folder
+2. Run the build script: python build_with_splash.py
+3. The executable will be created in the dist folder
+
+How it Works:
+When the .exe starts, it shows SFDLoad.png with a loading bar. The loading bar will gradually progress from 0% to 90% during the ~45 second loading time. Once the application is fully loaded, the loading bar completes to 100% and the splash screen closes. The application window opens immediately afterward
+
+Notes:
+-The progress bar doesn't track actual loading progress (that would be complicated) but simulates it with timing
+-If SFDLoad.png isn't found, the build script will create a placeholder image
+-The splash screen includes status messages that change during loading to inform the user
+-The solution works with PyInstaller, which you're already using for your builds
+-This provides the visual cue you requested without needing to actually speed up the loading time.
+
+**S3 Integration**
+The project needs to access to the account "Cakes and Tensors (372184463766)" with "BAHSSO_372184463766_Dreadnought" to access AWS resources programmatically or from the AWS CLI. 
+
+AWS recommends that configure the AWS CLI to retrieve them automatically using the "aws configure sso"  command. 
+SSO Start URL:  https://bahextendedenterprise.awsapps.com/start/#
+SSO Region:  us-east-1
+
+AWS IAM Identity Center credentials CLI:
+$ aws configure sso-session
+SSO session name: my-sso
+SSO start URL [None]: https://bahextendedenterprise.awsapps.com/start/#
+SSO region [None]: us-east-1
+SSO registration scopes [None]: sso:account:access
+
+Use command prompt to set the AWS environment variables:
+SET AWS_ACCESS_KEY_ID=ASIAVNJ7MHGLBDXB3RHB
+SET AWS_SECRET_ACCESS_KEY=cbtSohqXAMag/FCSNlUAut0WEVZ6lVwELk5VrgUO
+SET AWS_SESSION_TOKEN=IQoJb3JpZ2luX2VjEIz//////////wEaCXVzLWVhc3QtMSJHMEUCIBUfR2M5f00bdg018qiBVFPY00DDvCPYns9C4PM7uEduAiEAw4F1KTyBuWEm0/RbDIR9hfYHkFddDyXXCQluKNiD1dwq+wIIVBACGgwzNzIxODQ0NjM3NjYiDP26KeLH7FYuK5Zn5irYAvynuaNjIuQYvppqAktZchxf/BoN4iu6LExRNhlU1/WgDs/SG+WI6TcJzeCaxSn4oqF7CKBpFY1gClCkcl4680G+mfXHC31fPc00cRRz+G6Rq7V4UpMQV3iTzTMMOGKFxNxDLCrDfnP3n6FQtb5OQKPhezUIANJIBmlVPq5HqIGqOLIWaqQpdZ3tdem+xlX0kl2BACyzly0cnwVGF1kPn9+YmrHEX7tFE7sQjqWvUex3/58W/kKDyq6aq2Vv3esUpGmb55x7CwPEHtDwx0pcQEJPtYtRu4b6hTCzXCaxJoPmzaOJ/Q4xxWmlhY6ieQRmO4XloswamN5TvYSgmUP8H5PqW8zQtZvkfae5fT8mfTjC1auyeqeAr4XrsiwIFxqtVCsxv3hRrXXbkUDcoGzdNr8QgG2HiQJTvH4acWf2v9b63S1BR+GjvfAnNi+X1V1ysJU6U/FsEMzZMNe4oMgGOqUBWcIJs0jg5NNkf7ztcrHiw+3UVvsEJ+eMlx7MF9o7Ei2dnM7k9uCC+KgY3MBWj3Ip6D3vTXeQe3qCYVWZbCfQwMb6rPogZdngf0zkt+hAk3DjZhosL66mDv02dN+Y0UBs1MtuXZuy3pIJobU/bejxMx0//txgBM8VdQpIivX/NxGbemYuQ3LayNGz81vnQq88i5TjieCUTu1TWDE41pgumuov63Q4
+
+To implement: Created a new file called enhanced_s3_auth.py that provides different authentication methods:
+-Default credential provider chain
+-AWS profile
+-Access keys
+-IAM role ARN
+
+2. GUI Updates
+-Updated AnomalyDetectGUI_new.py to include:
+--Authentication method dropdown (default, profile, keys, role)
+--Input fields for different authentication methods
+--A new authentication method frame in the S3 settings section
+
+3. Authentication Logic
+-Implemented Dynamic UI that shows/hides input fields based on the selected authentication method
+-Test connection functionality that tests the connection with the selected authentication method
+-Configuration saving and loading for all authentication settings
+
+4. Command Line Integration
+Updated shipping_fraud_detection.py to:
+-Accept new command-line arguments for access keys, region, and IAM role
+-Set appropriate environment variables based on the provided authentication parameters
+-The implementation is now complete and supports all the requested authentication methods. The GUI allows users to select their preferred method and enter the necessary credentials, which are then used for testing the connection and for actual data processing.
+
+
+**Requirements and Dependencies Update**
+1. Updated the project's dependencies to include all necessary packages for the new splash screen functionality.
+
+New Requirements
+Restructured and expanded the requirements.txt file to include all dependencies needed for the new functionality:
+
+Added Pillow (≥9.0.0) - Essential for handling images in the splash screen
+Added tkhtmlview (≥0.1.0) and markdown (≥3.3.0) - For better README rendering
+Added boto3 (≥1.24.0) - For AWS integration
+Added pywin32 (≥300) - For Windows-specific functionality
+Organized dependencies into logical categories with comments
+Maintained all existing dependencies with their version requirements
+
+2. Created an Installation Script, install_dependencies.py, that:
+
+-Automatically installs all dependencies from requirements.txt
+-Checks for optional dependencies and provides warnings if they're missing
+-Shows detailed output about the installation process
+-Provides helpful guidance for manually installing specific packages if needed
+
+3. Added Documentation file, SPLASH_SCREEN_README.md, that
+
+-Explains the new splash screen feature
+-Lists all added files and their purposes
+-Details the new dependencies
+-Provides instructions for building with the splash screen
+-Includes customization options and troubleshooting tips
+
+**Project has grown in size and complexity
+-Created a ProjectFileList.txt to ensure all required project files are tracked.
+
+
+
 ## **2 NOV 2025 updates**
 
 ## **Updates to \.test**
