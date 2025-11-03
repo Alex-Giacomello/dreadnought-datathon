@@ -5,7 +5,7 @@
 ## **Updates to .dev**
 - [1. Long Loading Items](#long-loading-items)
 - [2. S3 Integration](#s3-integration)
-- [3. Requirements and Dependencies Update](#requirements-and-dependencies)
+- [3. Requirements and Dependencies Update](#requirements-and-dependencies-update)
 - [4. Project has grown in size and complexity](#project-has-grown-in-size-and-complexity)
 
 
