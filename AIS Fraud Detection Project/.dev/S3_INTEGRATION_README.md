@@ -110,16 +110,4 @@ You can test your S3 connectivity using the included test scripts:
    - Check that files follow the expected naming conventions
    - Ensure files have the correct extensions (.csv or .parquet)
 
-### Getting Help
 
-For further assistance:
-1. Check AWS documentation: https://docs.aws.amazon.com/s3/
-2. Contact your AWS administrator
-3. Refer to the boto3 documentation: https://boto3.amazonaws.com/v1/documentation/api/latest/index.html
-
-## Security Considerations
-
-- Never hardcode AWS credentials in your code
-- Use IAM roles with least privilege when possible
-- Consider using temporary credentials for enhanced security
-- Regularly rotate your AWS access keys
