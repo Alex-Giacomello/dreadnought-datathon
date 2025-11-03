@@ -4,6 +4,15 @@ echo AIS Shipping Fraud Detection System - Build Script
 echo ================================================
 echo.
 
+REM Get the script directory
+set "SCRIPT_DIR=%~dp0"
+
+REM Check for command line parameter
+if not "%1"=="" (
+    set CHOICE=%1
+    goto PROCESS_CHOICE
+)
+
 REM Check for Python installation
 python --version >nul 2>&1
 if %ERRORLEVEL% NEQ 0 (
@@ -12,9 +21,6 @@ if %ERRORLEVEL% NEQ 0 (
     pause
     exit /b 1
 )
-
-REM Get the script directory
-set "SCRIPT_DIR=%~dp0"
 
 :MENU
 cls
@@ -30,6 +36,7 @@ echo [5] Exit
 echo.
 set /p CHOICE=Enter your choice (1-5): 
 
+:PROCESS_CHOICE
 if "%CHOICE%"=="1" goto BUILD_EXE
 if "%CHOICE%"=="2" goto BUILD_INSTALLER
 if "%CHOICE%"=="3" goto BUILD_UNINSTALLER
@@ -52,6 +59,7 @@ echo Creating executable...
 python -m PyInstaller --name="Shipping Fraud Detection" --windowed --onefile ^
   --add-data="shipping_fraud_detection.py;." ^
   --add-data="config.ini;." ^
+  --icon="SFD.ico" ^
   --hidden-import=pandas ^
   --hidden-import=numpy ^
   --hidden-import=dask ^
@@ -78,7 +86,7 @@ python -m pip install pyinstaller
 
 REM Build command
 echo Creating installer executable...
-python -m PyInstaller --clean --name=AIS_Shipping_Fraud_Detection_Installer --add-data="%SCRIPT_DIR%;." --onefile --windowed installer.py
+python -m PyInstaller --clean --name=AIS_Shipping_Fraud_Detection_Installer --add-data="shipping_fraud_detection.py;." --add-data="config.ini;." --add-data="AnomalyDetectGUI_new.py;." --add-data="uninstaller.py;." --add-data="SFD.ico;." --add-data="SFDuninstaller.ico;." --icon="SFD.ico" --onefile installer.py
 
 echo.
 echo Installer built successfully!
@@ -96,7 +104,7 @@ python -m pip install pyinstaller
 
 REM Build command
 echo Creating uninstaller executable...
-python -m PyInstaller --clean --name=AIS_Fraud_Detection_Uninstaller --add-data="%SCRIPT_DIR%;." --onefile --windowed uninstaller.py
+python -m PyInstaller --clean --name=AIS_Fraud_Detection_Uninstaller --add-data="config.ini;." --add-data="SFDuninstaller.ico;." --icon="SFDuninstaller.ico" --onefile uninstaller.py
 
 echo.
 echo Uninstaller built successfully!
@@ -130,6 +138,7 @@ REM Create the executable
 python -m PyInstaller --name="Shipping Fraud Detection" --windowed --onefile ^
   --add-data="shipping_fraud_detection.py;." ^
   --add-data="config.ini;." ^
+  --icon="SFD.ico" ^
   --hidden-import=pandas ^
   --hidden-import=numpy ^
   --hidden-import=dask ^
@@ -148,7 +157,7 @@ REM Install PyInstaller if not already installed
 python -m pip install pyinstaller >nul 2>&1
 
 REM Build command
-python -m PyInstaller --clean --name=AIS_Shipping_Fraud_Detection_Installer --add-data="%SCRIPT_DIR%;." --onefile --windowed installer.py >nul 2>&1
+python -m PyInstaller --clean --name=AIS_Shipping_Fraud_Detection_Installer --add-data="shipping_fraud_detection.py;." --add-data="config.ini;." --add-data="AnomalyDetectGUI_new.py;." --add-data="uninstaller.py;." --add-data="SFD.ico;." --add-data="SFDuninstaller.ico;." --icon="SFD.ico" --onefile installer.py >nul 2>&1
 echo   - Installer built successfully
 exit /b 0
 
@@ -158,7 +167,7 @@ REM Install PyInstaller if not already installed
 python -m pip install pyinstaller >nul 2>&1
 
 REM Build command
-python -m PyInstaller --clean --name=AIS_Fraud_Detection_Uninstaller --add-data="%SCRIPT_DIR%;." --onefile --windowed uninstaller.py >nul 2>&1
+python -m PyInstaller --clean --name=AIS_Fraud_Detection_Uninstaller --add-data="config.ini;." --add-data="SFDuninstaller.ico;." --icon="SFDuninstaller.ico" --onefile uninstaller.py >nul 2>&1
 echo   - Uninstaller built successfully
 exit /b 0
 

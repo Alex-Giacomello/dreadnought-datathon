@@ -181,8 +181,13 @@ class UninstallerGUI:
     def remove_batch_files(self):
         """Remove batch files created during installation"""
         try:
-            # Get the script directory
-            script_dir = os.path.dirname(os.path.abspath(__file__))
+            # Get the script directory, handling PyInstaller frozen state
+            if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+                # Running as compiled executable
+                script_dir = os.path.dirname(sys.executable)
+            else:
+                # Running as a script
+                script_dir = os.path.dirname(os.path.abspath(__file__))
             
             # Remove the batch file
             batch_path = os.path.join(script_dir, "Shipping Fraud Detection.bat")
@@ -195,8 +200,13 @@ class UninstallerGUI:
     def remove_config_files(self):
         """Remove configuration files"""
         try:
-            # Get the script directory
-            script_dir = os.path.dirname(os.path.abspath(__file__))
+            # Get the script directory, handling PyInstaller frozen state
+            if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+                # Running as compiled executable
+                script_dir = os.path.dirname(sys.executable)
+            else:
+                # Running as a script
+                script_dir = os.path.dirname(os.path.abspath(__file__))
             
             # Remove config.ini
             config_path = os.path.join(script_dir, "config.ini")
@@ -223,7 +233,14 @@ class UninstallerGUI:
 
 if __name__ == "__main__":
     try:
+        # Log execution environment
         logger.info("Starting AIS Shipping Fraud Detection System Uninstaller")
+        logger.info(f"Python executable: {sys.executable}")
+        logger.info(f"Running in frozen state: {getattr(sys, 'frozen', False)}")
+        if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+            logger.info(f"MEIPASS: {sys._MEIPASS}")
+            logger.info(f"Executable directory: {os.path.dirname(sys.executable)}")
+        
         root = tk.Tk()
         app = UninstallerGUI(root)
         root.mainloop()

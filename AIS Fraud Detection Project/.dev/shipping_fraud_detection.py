@@ -18,6 +18,9 @@ import argparse
 import configparser
 import logging
 from datetime import datetime, timedelta
+import boto3
+import botocore.exceptions
+from urllib.parse import urlparse
 import pandas as pd
 import dask.dataframe as dd
 import numpy as np
@@ -40,8 +43,8 @@ logger = logging.getLogger(__name__)
 
 # Required columns for AIS data
 REQUIRED_COLUMNS = [
-    'MMSI', 'ShipName', 'ShipType', 'Latitude', 'Longitude',
-    'Timestamp', 'Speed', 'Heading', 'COG'
+    'MMSI', 'VesselName', 'VesselType', 'LAT', 'LON',
+    'BaseDateTime', 'SOG', 'Heading', 'COG'
 ]
 
 def normalize_angle_difference(angle_diff):
@@ -60,6 +63,120 @@ def normalize_angle_difference(angle_diff):
     while angle_diff < -180:
         angle_diff += 360
     return angle_diff
+
+def is_s3_uri(path):
+    """
+    Check if the given path is an S3 URI.
+    
+    Args:
+        path (str): Path to check
+        
+    Returns:
+        bool: True if the path is an S3 URI, False otherwise
+    """
+    return path.startswith('s3://')
+
+def parse_s3_uri(uri):
+    """
+    Parse an S3 URI into bucket name and prefix.
+    
+    Args:
+        uri (str): S3 URI to parse
+        
+    Returns:
+        tuple: (bucket_name, prefix)
+    """
+    parsed = urlparse(uri)
+    bucket = parsed.netloc
+    prefix = parsed.path.lstrip('/')
+    return bucket, prefix
+
+def list_s3_files_by_date_range(s3_uri, start_date, end_date):
+    """
+    Get AIS data files from S3 for a specific date range based on their filenames.
+    Supports both .csv and .parquet files with filenames in YYYY-MM-DD format.
+    
+    Args:
+        s3_uri (str): S3 URI pointing to the folder with AIS data files
+        start_date (datetime.date): Start date (inclusive)
+        end_date (datetime.date): End date (inclusive)
+        
+    Returns:
+        tuple: (list of file paths, list of dates)
+    """
+    try:
+        bucket_name, prefix = parse_s3_uri(s3_uri)
+        
+        # Create an S3 client
+        s3 = boto3.client('s3')
+        
+        # Make sure prefix ends with a slash
+        if prefix and not prefix.endswith('/'):
+            prefix += '/'
+        
+        # List objects in the bucket with the given prefix
+        response = s3.list_objects_v2(Bucket=bucket_name, Prefix=prefix)
+        
+        if 'Contents' not in response:
+            logger.warning(f"No files found in S3 bucket {bucket_name} with prefix {prefix}")
+            return [], []
+        
+        dated_files = {}
+        
+        for item in response['Contents']:
+            key = item['Key']
+            filename = os.path.basename(key)
+            
+            # Skip if the file doesn't have an extension
+            if '.' not in filename:
+                continue
+                
+            file_ext = os.path.splitext(filename)[1].lower()  # Get lowercase extension
+            if file_ext not in ['.csv', '.parquet']:
+                continue
+                
+            file_name_without_ext = filename.replace(file_ext, '')  # Remove file extension
+            
+            # Check if filename has 'ais-' prefix
+            if file_name_without_ext.startswith('ais-'):
+                date_str = file_name_without_ext[4:]  # Skip 'ais-' prefix
+            else:
+                date_str = file_name_without_ext
+                
+            try:
+                file_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+                dated_files[file_date] = f"s3://{bucket_name}/{key}"
+            except ValueError:
+                logger.warning(f"Skipping malformed filename {filename}. Expected ais-YYYY-MM-DD{file_ext} or YYYY-MM-DD{file_ext}")
+                continue
+        
+        if not dated_files:
+            logger.error(f"No valid data files found in S3 bucket {bucket_name} with prefix {prefix}")
+            return [], []
+        
+        # Select files within the date range
+        selected_files = []
+        selected_dates = []
+        
+        for file_date, file_path in sorted(dated_files.items()):
+            if start_date <= file_date <= end_date:
+                selected_files.append(file_path)
+                selected_dates.append(file_date)
+        
+        if not selected_files:
+            logger.warning(f"No files found in date range {start_date} to {end_date}")
+            
+        return selected_files, selected_dates
+            
+    except botocore.exceptions.NoCredentialsError:
+        logger.error("AWS credentials not found. Please configure AWS credentials.")
+        return [], []
+    except botocore.exceptions.ClientError as e:
+        logger.error(f"Error accessing S3: {e}")
+        return [], []
+    except Exception as e:
+        logger.error(f"Error finding files in S3 bucket: {e}")
+        return [], []
 
 def load_config(config_file='config.ini'):
     """
@@ -99,7 +216,9 @@ def load_config(config_file='config.ini'):
         'OUTPUT_DIRECTORY': config['DEFAULT'].get('OUTPUT_DIRECTORY', config['DEFAULT']['DATA_DIRECTORY'] + '\\Reports'),
         'MIN_TRAVEL_NM': float(config['ANOMALY_THRESHOLDS']['MIN_TRAVEL_NM']),
         'MAX_TRAVEL_NM': float(config['ANOMALY_THRESHOLDS']['MAX_TRAVEL_NM']),
-        'TIMESTAMP_FORMAT': config['TIMESTAMPS'].get('FORMAT', '%Y-%m-%d %H:%M:%S').replace('%%', '%')
+        'TIMESTAMP_FORMAT': config.get('TIMESTAMPS', {}).get('FORMAT', '%Y-%m-%d %H:%M:%S').replace('%%', '%') if 'TIMESTAMPS' in config else '%Y-%m-%d %H:%M:%S',
+        'USE_S3': config.get('S3_SETTINGS', {}).getboolean('USE_S3', False) if 'S3_SETTINGS' in config else False,
+        'S3_DATA_URI': config.get('S3_SETTINGS', {}).get('S3_DATA_URI', '') if 'S3_SETTINGS' in config else ''
     }
     
     # Load selected ship types
@@ -144,10 +263,10 @@ def haversine_distance_nm(lat1, lon1, lat2, lon2):
     (specified in decimal degrees) in nautical miles.
     
     Args:
-        lat1 (float): Latitude of point 1
-        lon1 (float): Longitude of point 1
-        lat2 (float): Latitude of point 2
-        lon2 (float): Longitude of point 2
+        lat1 (float): LAT of point 1
+        lon1 (float): LON of point 1
+        lat2 (float): LAT of point 2
+        lon2 (float): LON of point 2
         
     Returns:
         float: Distance in nautical miles
@@ -161,16 +280,16 @@ def haversine_vectorized(df):
     Vectorized implementation of the Haversine formula for Dask DataFrames.
     
     Args:
-        df (DataFrame): DataFrame with prev_Latitude, prev_Longitude, curr_Latitude, curr_Longitude columns
+        df (DataFrame): DataFrame with prev_LAT, prev_LON, curr_LAT, curr_LON columns
         
     Returns:
         Series: Distances in nautical miles
     """
     # Convert latitude and longitude from degrees to radians
-    lat1_rad = np.radians(df['prev_Latitude'])
-    lon1_rad = np.radians(df['prev_Longitude'])
-    lat2_rad = np.radians(df['curr_Latitude'])
-    lon2_rad = np.radians(df['curr_Longitude'])
+    lat1_rad = np.radians(df['prev_LAT'])
+    lon1_rad = np.radians(df['prev_LON'])
+    lat2_rad = np.radians(df['curr_LAT'])
+    lon2_rad = np.radians(df['curr_LON'])
     
     # Haversine formula
     dlon = lon2_rad - lon1_rad
@@ -185,9 +304,10 @@ def get_files_for_date_range(data_dir, start_date, end_date):
     """
     Get AIS data files for a specific date range based on their filenames.
     Supports both .csv and .parquet files with filenames in YYYY-MM-DD format.
+    Also supports S3 URIs for cloud storage.
     
     Args:
-        data_dir (str): Directory containing AIS data files
+        data_dir (str): Directory containing AIS data files or S3 URI
         start_date (datetime.date): Start date (inclusive)
         end_date (datetime.date): End date (inclusive)
         
@@ -195,6 +315,12 @@ def get_files_for_date_range(data_dir, start_date, end_date):
         tuple: (list of file paths, list of dates)
     """
     try:
+        # Check if the data_dir is an S3 URI
+        if is_s3_uri(data_dir):
+            # Use S3-specific function to get files
+            return list_s3_files_by_date_range(data_dir, start_date, end_date)
+            
+        # Local filesystem handling
         # Look for both CSV and Parquet files
         csv_pattern = os.path.join(data_dir, "*.csv")
         parquet_pattern = os.path.join(data_dir, "*.parquet")
@@ -249,15 +375,86 @@ def get_most_recent_files(data_dir, num_days):
     """
     Identify the most recent AIS data files based on their filenames (date).
     Supports both .csv and .parquet files with filenames in YYYY-MM-DD format.
+    Also supports S3 URIs for cloud storage.
     
     Args:
-        data_dir (str): Directory containing AIS data files
+        data_dir (str): Directory containing AIS data files or S3 URI
         num_days (int): Number of days to analyze
         
     Returns:
         tuple: (list of file paths, list of dates)
     """
     try:
+        # Check if the data_dir is an S3 URI
+        if is_s3_uri(data_dir):
+            # For S3, we need to list all files and then filter by date
+            bucket_name, prefix = parse_s3_uri(data_dir)
+            s3 = boto3.client('s3')
+            
+            # Make sure prefix ends with a slash
+            if prefix and not prefix.endswith('/'):
+                prefix += '/'
+            
+            # List objects in the bucket with the given prefix
+            response = s3.list_objects_v2(Bucket=bucket_name, Prefix=prefix)
+            
+            if 'Contents' not in response:
+                logger.warning(f"No files found in S3 bucket {bucket_name} with prefix {prefix}")
+                return [], []
+            
+            # Process all files to extract dates
+            all_dated_files = {}
+            
+            for item in response['Contents']:
+                key = item['Key']
+                filename = os.path.basename(key)
+                
+                # Skip if the file doesn't have an extension
+                if '.' not in filename:
+                    continue
+                    
+                file_ext = os.path.splitext(filename)[1].lower()
+                if file_ext not in ['.csv', '.parquet']:
+                    continue
+                    
+                file_name_without_ext = filename.replace(file_ext, '')
+                
+                # Check if filename has 'ais-' prefix
+                if file_name_without_ext.startswith('ais-'):
+                    date_str = file_name_without_ext[4:]
+                else:
+                    date_str = file_name_without_ext
+                
+                try:
+                    file_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+                    all_dated_files[file_date] = f"s3://{bucket_name}/{key}"
+                except ValueError:
+                    continue
+            
+            if not all_dated_files:
+                logger.error(f"No valid data files found in S3 bucket {bucket_name} with prefix {prefix}")
+                return [], []
+                
+            # Get the most recent date
+            sorted_dates = sorted(all_dated_files.keys(), reverse=True)
+            if not sorted_dates:
+                return [], []
+                
+            end_date = sorted_dates[0]
+            start_date = end_date - timedelta(days=num_days)
+            
+            # Filter files within date range
+            selected_files = []
+            selected_dates = []
+            
+            for date, path in all_dated_files.items():
+                if start_date <= date <= end_date:
+                    selected_files.append(path)
+                    selected_dates.append(date)
+                    
+            return sorted(zip(selected_files, selected_dates), key=lambda x: x[1])
+            
+        # Local file system handling
         # Look for both CSV and Parquet files
         csv_pattern = os.path.join(data_dir, "*.csv")
         parquet_pattern = os.path.join(data_dir, "*.parquet")
@@ -320,7 +517,8 @@ def load_and_preprocess_day(file_path, config, use_dask=True):
         DataFrame or Dask DataFrame: Processed data or None if an error occurs
     """
     try:
-        if not os.path.exists(file_path):
+        # Skip file existence check for S3 URIs - we'll let pandas/dask handle errors
+        if not is_s3_uri(file_path) and not os.path.exists(file_path):
             raise FileNotFoundError(f"File not found: {file_path}")
             
         logger.info(f"Loading data from {file_path}")
@@ -329,10 +527,18 @@ def load_and_preprocess_day(file_path, config, use_dask=True):
         
         if use_dask:
             # Use Dask for large files
-            if is_parquet:
-                df = dd.read_parquet(file_path)
-            else:  # Default to CSV
-                df = dd.read_csv(file_path)
+            if is_s3_uri(file_path):
+                if is_parquet:
+                    df = dd.read_parquet(file_path)
+                else:  # Default to CSV
+                    # Handle the 'anomaly' column as object type to avoid conversion errors
+                    df = dd.read_csv(file_path, dtype={'anomaly': 'object'}, storage_options={'anon': False})
+            else:  # Local filesystem
+                if is_parquet:
+                    df = dd.read_parquet(file_path)
+                else:  # Default to CSV
+                    # Handle the 'anomaly' column as object type to avoid conversion errors
+                    df = dd.read_csv(file_path, dtype={'anomaly': 'object'})
             
             # Check for required columns
             missing_cols = [col for col in REQUIRED_COLUMNS if col not in df.columns]
@@ -344,15 +550,15 @@ def load_and_preprocess_day(file_path, config, use_dask=True):
             
             # Filter by selected ship types
             if 'SELECTED_SHIP_TYPES' in config and config['SELECTED_SHIP_TYPES']:
-                df = df[df['ShipType'].isin(config['SELECTED_SHIP_TYPES'])]
+                df = df[df['VesselType'].isin(config['SELECTED_SHIP_TYPES'])]
             
-            # Convert Timestamp
-            df['Timestamp'] = dd.to_datetime(df['Timestamp'], 
+            # Convert BaseDateTime
+            df['BaseDateTime'] = dd.to_datetime(df['BaseDateTime'], 
                                            format=config['TIMESTAMP_FORMAT'], 
                                            errors='coerce')
             
             # Ensure numeric types for coordinates, speed, heading, and COG
-            for col in ['Latitude', 'Longitude', 'Speed', 'Heading', 'COG']:
+            for col in ['LAT', 'LON', 'SOG', 'Heading', 'COG']:
                 df[col] = dd.to_numeric(df[col], errors='coerce')
             
             # Only drop rows with missing MMSI as it's the primary identifier
@@ -360,17 +566,23 @@ def load_and_preprocess_day(file_path, config, use_dask=True):
             df = df.dropna(subset=['MMSI'])
             
             # Add a 'date' column for easy grouping/identification
-            df['Date'] = df['Timestamp'].dt.date
+            df['Date'] = df['BaseDateTime'].dt.date
             
             # Compute the final result
             return df.compute()
             
         else:
             # Use pandas for smaller files
-            if is_parquet:
-                df = pd.read_parquet(file_path)
-            else:  # Default to CSV
-                df = pd.read_csv(file_path, low_memory=False)
+            if is_s3_uri(file_path):
+                if is_parquet:
+                    df = pd.read_parquet(file_path, storage_options={'anon': False})
+                else:  # Default to CSV
+                    df = pd.read_csv(file_path, low_memory=False, dtype={'anomaly': 'object'}, storage_options={'anon': False})
+            else:  # Local filesystem
+                if is_parquet:
+                    df = pd.read_parquet(file_path)
+                else:  # Default to CSV
+                    df = pd.read_csv(file_path, low_memory=False, dtype={'anomaly': 'object'})
             
             # Check for required columns
             missing_cols = [col for col in REQUIRED_COLUMNS if col not in df.columns]
@@ -382,15 +594,15 @@ def load_and_preprocess_day(file_path, config, use_dask=True):
             
             # Filter by selected ship types
             if 'SELECTED_SHIP_TYPES' in config and config['SELECTED_SHIP_TYPES']:
-                df = df[df['ShipType'].isin(config['SELECTED_SHIP_TYPES'])]
+                df = df[df['VesselType'].isin(config['SELECTED_SHIP_TYPES'])]
             
-            # Convert Timestamp
-            df['Timestamp'] = pd.to_datetime(df['Timestamp'], 
+            # Convert BaseDateTime
+            df['BaseDateTime'] = pd.to_datetime(df['BaseDateTime'], 
                                            format=config['TIMESTAMP_FORMAT'], 
                                            errors='coerce')
             
             # Ensure numeric types for coordinates, speed, heading, and COG
-            for col in ['Latitude', 'Longitude', 'Speed', 'Heading', 'COG']:
+            for col in ['LAT', 'LON', 'SOG', 'Heading', 'COG']:
                 df[col] = pd.to_numeric(df[col], errors='coerce')
             
             # Only drop rows with missing MMSI as it's the primary identifier
@@ -398,7 +610,7 @@ def load_and_preprocess_day(file_path, config, use_dask=True):
             df.dropna(subset=['MMSI'], inplace=True)
             
             # Add a 'date' column for easy grouping/identification
-            df['Date'] = df['Timestamp'].dt.date
+            df['Date'] = df['BaseDateTime'].dt.date
             
             return df
             
@@ -431,8 +643,8 @@ def create_map_visualization(anomalies_df, output_path):
         return
         
     # Create a map centered on the mean coordinates
-    center_lat = anomalies_df['Latitude'].mean()
-    center_lon = anomalies_df['Longitude'].mean()
+    center_lat = anomalies_df['LAT'].mean()
+    center_lon = anomalies_df['LON'].mean()
     m = folium.Map(location=[center_lat, center_lon], zoom_start=4)
     
     # Add a marker cluster
@@ -466,12 +678,12 @@ def create_map_visualization(anomalies_df, output_path):
         <b>MMSI:</b> {row['MMSI']}<br>
         <b>Anomaly:</b> {row['Type of Anomaly Detected']}<br>
         <b>Date:</b> {row['Date of Anomaly']}<br>
-        <b>Position:</b> {row['Latitude']:.4f}, {row['Longitude']:.4f}
+        <b>Position:</b> {row['LAT']:.4f}, {row['LON']:.4f}
         """
         
         # Add marker
         folium.Marker(
-            location=[row['Latitude'], row['Longitude']],
+            location=[row['LAT'], row['LON']],
             popup=folium.Popup(popup_content, max_width=300),
             icon=folium.Icon(color=color, icon=icon, prefix='fa')
         ).add_to(marker_cluster)
@@ -630,7 +842,7 @@ def _process_anomaly_detection(file_paths, dates_in_order, config, use_dask=True
         report_date = current_date.strftime('%Y-%m-%d')
         
         # Check for null values in critical fields and report them as anomalies
-        null_value_columns = ['Latitude', 'Longitude', 'Speed', 'Heading', 'COG']
+        null_value_columns = ['LAT', 'LON', 'SOG', 'Heading', 'COG']
         for col in null_value_columns:
             if col in df_current_day.columns:
                 # Find ships with null values in this column
@@ -641,15 +853,15 @@ def _process_anomaly_detection(file_paths, dates_in_order, config, use_dask=True
                     
                     for _, row in null_ships.iterrows():
                         # Use non-null values for coordinates if available, otherwise use 0,0
-                        lat = row['Latitude'] if not pd.isna(row['Latitude']) else 0
-                        lon = row['Longitude'] if not pd.isna(row['Longitude']) else 0
+                        lat = row['LAT'] if not pd.isna(row['LAT']) else 0
+                        lon = row['LON'] if not pd.isna(row['LON']) else 0
                         
                         anomalies.append({
                             'Date of Anomaly': report_date,
-                            'Ship Name': row['ShipName'],
+                            'Ship Name': row['VesselName'],
                             'MMSI': row['MMSI'],
-                            'Latitude': lat,
-                            'Longitude': lon,
+                            'LAT': lat,
+                            'LON': lon,
                             'Type of Anomaly Detected': f'Null Value in {col}'
                         })
         
@@ -658,7 +870,7 @@ def _process_anomaly_detection(file_paths, dates_in_order, config, use_dask=True
         # and ship speed is greater than 10 knots
         if config.get('DETECT_COG_HEADING', True) and 'COG' in df_current_day.columns:
             # Filter for ships with speed > MIN_SPEED_FOR_COG_CHECK
-            high_speed_ships = df_current_day[df_current_day['Speed'] >= config['MIN_SPEED_FOR_COG_CHECK']]
+            high_speed_ships = df_current_day[df_current_day['SOG'] >= config['MIN_SPEED_FOR_COG_CHECK']]
             
             if not high_speed_ships.empty:
                 # Calculate absolute difference between COG and Heading
@@ -674,10 +886,10 @@ def _process_anomaly_detection(file_paths, dates_in_order, config, use_dask=True
                     for _, row in cog_heading_anomalies.iterrows():
                         anomalies.append({
                             'Date of Anomaly': report_date,
-                            'Ship Name': row['ShipName'],
+                            'Ship Name': row['VesselName'],
                             'MMSI': row['MMSI'],
-                            'Latitude': row['Latitude'],
-                            'Longitude': row['Longitude'],
+                            'LAT': row['LAT'],
+                            'LON': row['LON'],
                             'Type of Anomaly Detected': f'COG-Heading Inconsistency: {row["angle_diff"]:.1f}° (COG: {row["COG"]:.1f}°, Heading: {row["Heading"]:.1f}°)'
                         })
         
@@ -694,10 +906,10 @@ def _process_anomaly_detection(file_paths, dates_in_order, config, use_dask=True
                 for _, row in beacon_off_last_positions.iterrows():
                     anomalies.append({
                         'Date of Anomaly': report_date,
-                        'Ship Name': row['ShipName'],
+                        'Ship Name': row['VesselName'],
                         'MMSI': row['MMSI'],
-                        'Latitude': row['Latitude'],
-                        'Longitude': row['Longitude'],
+                        'LAT': row['LAT'],
+                        'LON': row['LON'],
                         'Type of Anomaly Detected': 'AIS Beacon Off'
                     })
         
@@ -711,10 +923,10 @@ def _process_anomaly_detection(file_paths, dates_in_order, config, use_dask=True
                 for _, row in beacon_on_first_positions.iterrows():
                     anomalies.append({
                         'Date of Anomaly': report_date,
-                        'Ship Name': row['ShipName'],
+                        'Ship Name': row['VesselName'],
                         'MMSI': row['MMSI'],
-                        'Latitude': row['Latitude'],
-                        'Longitude': row['Longitude'],
+                        'LAT': row['LAT'],
+                        'LON': row['LON'],
                         'Type of Anomaly Detected': 'AIS Beacon On'
                     })
         
@@ -724,15 +936,15 @@ def _process_anomaly_detection(file_paths, dates_in_order, config, use_dask=True
         if common_mmsi:
             # Get the last position from previous day and first position from current day for each MMSI
             df_prev_common = df_previous_day[df_previous_day['MMSI'].isin(common_mmsi)]
-            df_prev_common = df_prev_common.sort_values('Timestamp').groupby('MMSI').last().reset_index()
+            df_prev_common = df_prev_common.sort_values('BaseDateTime').groupby('MMSI').last().reset_index()
             
             df_curr_common = df_current_day[df_current_day['MMSI'].isin(common_mmsi)]
-            df_curr_common = df_curr_common.sort_values('Timestamp').groupby('MMSI').first().reset_index()
+            df_curr_common = df_curr_common.sort_values('BaseDateTime').groupby('MMSI').first().reset_index()
             
             # Merge to get previous and current positions side-by-side
             merged_df = pd.merge(
-                df_prev_common[['MMSI', 'Latitude', 'Longitude', 'ShipName']],
-                df_curr_common[['MMSI', 'Latitude', 'Longitude']],
+                df_prev_common[['MMSI', 'LAT', 'LON', 'VesselName']],
+                df_curr_common[['MMSI', 'LAT', 'LON']],
                 on='MMSI',
                 suffixes=('_prev', '_curr')
             )
@@ -746,8 +958,8 @@ def _process_anomaly_detection(file_paths, dates_in_order, config, use_dask=True
                 # Use apply for smaller datasets
                 merged_df['Distance_NM'] = merged_df.apply(
                     lambda row: haversine_distance_nm(
-                        row['Latitude_prev'], row['Longitude_prev'],
-                        row['Latitude_curr'], row['Longitude_curr']
+                        row['LAT_prev'], row['LON_prev'],
+                        row['LAT_curr'], row['LON_curr']
                     ), axis=1
                 )
             
@@ -757,10 +969,10 @@ def _process_anomaly_detection(file_paths, dates_in_order, config, use_dask=True
                 for _, row in fast_travel_ships.iterrows():
                     anomalies.append({
                         'Date of Anomaly': report_date,
-                        'Ship Name': row['ShipName'],
+                        'Ship Name': row['VesselName'],
                         'MMSI': row['MMSI'],
-                        'Latitude': row['Latitude_curr'],
-                        'Longitude': row['Longitude_curr'],
+                        'LAT': row['LAT_curr'],
+                        'LON': row['LON_curr'],
                         'Type of Anomaly Detected': f'Excessive Travel Distance (Fast): {row["Distance_NM"]:.1f} NM'
                     })
             
@@ -769,10 +981,10 @@ def _process_anomaly_detection(file_paths, dates_in_order, config, use_dask=True
                 for _, row in slow_travel_ships.iterrows():
                     anomalies.append({
                         'Date of Anomaly': report_date,
-                        'Ship Name': row['ShipName'],
+                        'Ship Name': row['VesselName'],
                         'MMSI': row['MMSI'],
-                        'Latitude': row['Latitude_curr'],
-                        'Longitude': row['Longitude_curr'],
+                        'LAT': row['LAT_curr'],
+                        'LON': row['LON_curr'],
                         'Type of Anomaly Detected': f'Excessive Travel Distance (Slow): {row["Distance_NM"]:.1f} NM'
                     })
         
@@ -811,7 +1023,7 @@ def _process_anomaly_detection(file_paths, dates_in_order, config, use_dask=True
         overall_map_path = os.path.join(config['OUTPUT_DIRECTORY'], "All Anomalies Map.html")
         create_map_visualization(all_anomalies_df, overall_map_path)
         
-        logger.info(f"AIS Fraud Detection Complete. Found {len(all_anomalies)} anomalies across {num_days_to_analyze} days.")
+        logger.info(f"AIS Fraud Detection Complete. Found {len(all_anomalies)} anomalies across {len(dates_in_order)} days.")
         return all_anomalies_df
     else:
         logger.info(f"AIS Fraud Detection Complete. No anomalies detected.")
@@ -830,6 +1042,13 @@ def main():
     parser.add_argument('--no-dask', action='store_true', help='Disable Dask processing for large files')
     parser.add_argument('--debug', action='store_true', help='Enable debug logging')
     parser.add_argument('--ship-types', type=str, help='Comma-separated list of ship types to analyze (e.g., "70,80,81")')
+    parser.add_argument('--s3-uri', type=str, help='S3 URI for data location (e.g., "s3://bucket-name/path/to/data/")')
+    parser.add_argument('--profile', type=str, help='AWS profile name to use for S3 access')
+    parser.add_argument('--profile', type=str, help='AWS profile name to use for S3 access')
+    parser.add_argument('--access-key', type=str, help='AWS access key ID for S3 access')
+    parser.add_argument('--secret-key', type=str, help='AWS secret access key for S3 access')
+    parser.add_argument('--region', type=str, help='AWS region name', default='us-east-1')
+    parser.add_argument('--role-arn', type=str, help='AWS IAM role ARN to assume for S3 access')
     
     args = parser.parse_args()
     
@@ -856,6 +1075,55 @@ def main():
                 config['SELECTED_SHIP_TYPES'] = selected_types
         except ValueError as e:
             logger.warning(f"Invalid ship type format in command line. Using config file values instead. Error: {e}")
+    
+    # Override data directory with S3 URI if specified
+    if args.s3_uri:
+        logger.info(f"Using S3 URI for data: {args.s3_uri}")
+        config['USE_S3'] = True
+        config['S3_DATA_URI'] = args.s3_uri
+        # When using S3, override the data directory with the S3 URI
+        config['DATA_DIRECTORY'] = args.s3_uri
+    else:
+        # Use S3 settings from config if present
+        if config.get('USE_S3', False) and config.get('S3_DATA_URI', ''):
+            logger.info(f"Using S3 URI from config: {config['S3_DATA_URI']}")
+            config['DATA_DIRECTORY'] = config['S3_DATA_URI']
+    
+    # Set AWS profile if specified
+    if args.profile:
+        logger.info(f"Using AWS profile: {args.profile}")
+        config['AWS_PROFILE'] = args.profile
+        
+        # Set up boto3 session with profile
+        import boto3
+        boto3.setup_default_session(profile_name=args.profile)
+    # Set AWS credentials if provided
+    if args.access_key and args.secret_key:
+        logger.info(f"Using provided AWS access keys")
+        os.environ['AWS_ACCESS_KEY_ID'] = args.access_key
+        os.environ['AWS_SECRET_ACCESS_KEY'] = args.secret_key
+        if args.region:
+            os.environ['AWS_DEFAULT_REGION'] = args.region
+            
+    # Set up role assumption if specified
+    if args.role_arn:
+        try:
+            logger.info(f"Assuming IAM role: {args.role_arn}")
+            import boto3
+            sts_client = boto3.client('sts', region_name=args.region)
+            assumed_role = sts_client.assume_role(
+                RoleArn=args.role_arn,
+                RoleSessionName="FraudDetectionSession"
+            )
+            credentials = assumed_role['Credentials']
+            
+            os.environ['AWS_ACCESS_KEY_ID'] = credentials['AccessKeyId']
+            os.environ['AWS_SECRET_ACCESS_KEY'] = credentials['SecretAccessKey']
+            os.environ['AWS_SESSION_TOKEN'] = credentials['SessionToken']
+            if args.region:
+                os.environ['AWS_DEFAULT_REGION'] = args.region
+        except Exception as e:
+            logger.error(f"Error assuming role: {e}")
     
     # Run anomaly detection based on provided parameters
     use_dask = not args.no_dask

@@ -42,10 +42,10 @@ class TestHaversineDistance(unittest.TestCase):
         """Test the vectorized Haversine function."""
         # Create a test dataframe
         df = pd.DataFrame({
-            'prev_Latitude': [40.7128, 34.0522],
-            'prev_Longitude': [-74.0060, -118.2437],
-            'curr_Latitude': [51.5074, 37.7749],
-            'curr_Longitude': [-0.1278, -122.4194]
+            'prev_LAT': [40.7128, 34.0522],
+            'prev_LON': [-74.0060, -118.2437],
+            'curr_LAT': [51.5074, 37.7749],
+            'curr_LON': [-0.1278, -122.4194]
         })
         
         # Calculate distances
@@ -96,16 +96,16 @@ class TestFileOperations(unittest.TestCase):
             # Create a dataframe with test data
             df = pd.DataFrame({
                 'MMSI': [123456789, 987654321, 555555555],
-                'ShipName': [f"Ship{i}A", f"Ship{i}B", f"Ship{i}C"],
-                'ShipType': [70, 80, 85],
-                'Latitude': [40.7128, 34.0522, 37.7749],
-                'Longitude': [-74.0060, -118.2437, -122.4194],
-                'Timestamp': [
+                'VesselName': [f"Ship{i}A", f"Ship{i}B", f"Ship{i}C"],
+                'VesselType': [70, 80, 85],
+                'LAT': [40.7128, 34.0522, 37.7749],
+                'LON': [-74.0060, -118.2437, -122.4194],
+                'BaseDateTime': [
                     f"{date_str} 12:00:00", 
                     f"{date_str} 13:00:00", 
                     f"{date_str} 14:00:00"
                 ],
-                'Speed': [10.5, 12.3, 8.7],
+                'SOG': [10.5, 12.3, 8.7],
                 'Heading': [90, 180, 270],
                 'COG': [88, 182, 272]
             })
@@ -141,10 +141,10 @@ class TestFileOperations(unittest.TestCase):
         self.assertIn('Date', df.columns)  # Should have added Date column
         
         # Check that types were converted correctly
-        self.assertTrue(pd.api.types.is_datetime64_dtype(df['Timestamp']))
-        self.assertTrue(pd.api.types.is_numeric_dtype(df['Latitude']))
-        self.assertTrue(pd.api.types.is_numeric_dtype(df['Longitude']))
-        self.assertTrue(pd.api.types.is_numeric_dtype(df['Speed']))
+        self.assertTrue(pd.api.types.is_datetime64_dtype(df['BaseDateTime']))
+        self.assertTrue(pd.api.types.is_numeric_dtype(df['LAT']))
+        self.assertTrue(pd.api.types.is_numeric_dtype(df['LON']))
+        self.assertTrue(pd.api.types.is_numeric_dtype(df['SOG']))
         self.assertTrue(pd.api.types.is_numeric_dtype(df['Heading']))
 
 class TestAngleNormalization(unittest.TestCase):

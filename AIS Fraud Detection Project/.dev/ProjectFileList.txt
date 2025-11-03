@@ -1,0 +1,73 @@
+# AIS Fraud Detection Project - File Inventory
+# Last updated: 2025-11-03
+
+## Python Scripts
+AnomalyDetectGUI_new.py           # Main GUI application
+Open_to_Begin.py                  # Entry point script
+aws_config.py                     # AWS configuration utilities
+aws_config_helper.py              # Helper functions for AWS configuration
+build_with_splash.py              # Script to build exe with splash screen
+enhanced_s3_auth.py               # Enhanced AWS S3 authentication module
+generate_sample_data.py           # Generates sample data for testing
+install_dependencies.py           # Dependency installation script
+installer.py                      # Application installer
+launch_with_splash.py             # Launcher with splash screen
+set_temp_credentials.py           # Sets temporary AWS credentials
+setup_aws_sso.py                  # AWS SSO setup utility
+shipping_fraud_detection.py       # Core fraud detection algorithm
+splash_screen.py                  # Splash screen implementation
+test_s3_connectivity.py           # Tests AWS S3 connectivity
+test_s3_connectivity_enhanced.py  # Enhanced S3 connectivity tests
+test_shipping_fraud_detection.py  # Test suite for fraud detection
+uninstaller.py                    # Application uninstaller
+update_shipping_fraud_detection.py # Updates shipping_fraud_detection.py
+
+## Multi-platform Python Scripts
+Multi-platform/android_web_app.py     # Android web app implementation
+Multi-platform/cross_platform_test.py # Cross-platform test utility
+Multi-platform/ios_web_app.py         # iOS web app implementation
+Multi-platform/platform_utils.py      # Platform utilities
+Multi-platform/setup.py               # Multi-platform setup script
+
+## Documentation
+1. README.md                      # Main readme file
+S3_INTEGRATION_README.md          # S3 integration documentation
+S3_QUICKSTART.md                  # S3 quickstart guide
+SPLASH_SCREEN_README.md           # Splash screen documentation
+
+## Multi-platform Documentation
+Multi-platform/README.md          # Multi-platform readme
+Multi-platform/android_macos_guide.md # Android/MacOS guide
+Multi-platform/cross_platform_guide.md # Cross-platform guide
+
+## Windows Batch Scripts
+"Install Shipping Fraud Detection.bat" # Installation batch file
+Open_to_Begin.bat                 # Windows launcher
+build.bat                         # Windows build script
+create_desktop_shortcut.bat       # Creates desktop shortcut
+
+## Shell Scripts (Unix/MacOS)
+Multi-platform/android_launcher.sh    # Android launcher
+Multi-platform/build.sh               # Unix/MacOS build script
+Multi-platform/ios_launcher.sh        # iOS launcher
+Multi-platform/macos_launcher.sh      # MacOS launcher
+Multi-platform/macos_setup.sh         # MacOS setup script
+Multi-platform/open_to_begin.sh       # Unix/MacOS launcher
+Multi-platform/run_test.sh            # Test runner script
+Multi-platform/shipping_fraud_detection_launcher.sh # Main app launcher
+
+## Configuration and Build Files
+splash_build.spec                 # PyInstaller specification file
+
+## Images and Resources
+SFD.ico                          # Application icon
+SFDLoad.png                      # Splash screen image
+
+## Log Files
+ais_fraud_detection_gui.log      # GUI application log
+gui_error.log                    # GUI error log
+shipping_fraud_detection.log     # Core algorithm log
+
+## Generated Files
+requirements.txt                 # Python package dependencies
+config.ini                       # Application configuration
