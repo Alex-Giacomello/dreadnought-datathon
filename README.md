@@ -2,7 +2,7 @@
 
 **3 NOV 2025 updates**
 
-## **Updates to .dev
+## **Updates to .dev**
 
 ## **Long Loading items:**
 Created a loading splash screen to show user that the file is running.
