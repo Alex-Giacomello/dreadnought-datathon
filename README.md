@@ -3,10 +3,10 @@
 ## **3 NOV 2025 updates**
 
 ## **Updates to .dev**
-- [1.  Long Loading items] (#long-loading-requirements)
-- [2.  S3 Integration] (#s3_integration)
-- [3. Requirements and Dependencies Update] (requieements-and-dependencies)
-- [4. Project has grown in size and complexity] (#project-has-grown-in-size-and-complexity)
+- [1. Long Loading Items](#long-loading-items)
+- [2. S3 Integration](#s3-integration)
+- [3. Requirements and Dependencies Update](#requirements-and-dependencies)
+- [4. Project has grown in size and complexity](#project-has-grown-in-size-and-complexity)
 
 
 ## Long Loading items:
@@ -113,6 +113,7 @@ Maintained all existing dependencies with their version requirements
 ## Project has grown in size and complexity
 
 -Created a ProjectFileList.txt to ensure all required project files are tracked.
+
 
 
 
