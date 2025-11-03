@@ -40,8 +40,8 @@ logger = logging.getLogger(__name__)
 
 # Required columns for AIS data
 REQUIRED_COLUMNS = [
-    'MMSI', 'ShipName', 'ShipType', 'Latitude', 'Longitude',
-    'Timestamp', 'Speed', 'Heading', 'COG'
+    'MMSI', 'VesselName', 'VesselType', 'LAT', 'LON',
+    'BaseDateTime', 'SOG', 'Heading', 'COG'
 ]
 
 def normalize_angle_difference(angle_diff):
@@ -99,7 +99,7 @@ def load_config(config_file='config.ini'):
         'OUTPUT_DIRECTORY': config['DEFAULT'].get('OUTPUT_DIRECTORY', config['DEFAULT']['DATA_DIRECTORY'] + '\\Reports'),
         'MIN_TRAVEL_NM': float(config['ANOMALY_THRESHOLDS']['MIN_TRAVEL_NM']),
         'MAX_TRAVEL_NM': float(config['ANOMALY_THRESHOLDS']['MAX_TRAVEL_NM']),
-        'TIMESTAMP_FORMAT': config['TIMESTAMPS'].get('FORMAT', '%Y-%m-%d %H:%M:%S').replace('%%', '%')
+        'TIMESTAMP_FORMAT': config.get('TIMESTAMPS', {}).get('FORMAT', '%Y-%m-%d %H:%M:%S').replace('%%', '%') if 'TIMESTAMPS' in config else '%Y-%m-%d %H:%M:%S'
     }
     
     # Load selected ship types
@@ -144,10 +144,10 @@ def haversine_distance_nm(lat1, lon1, lat2, lon2):
     (specified in decimal degrees) in nautical miles.
     
     Args:
-        lat1 (float): Latitude of point 1
-        lon1 (float): Longitude of point 1
-        lat2 (float): Latitude of point 2
-        lon2 (float): Longitude of point 2
+        lat1 (float): LAT of point 1
+        lon1 (float): LON of point 1
+        lat2 (float): LAT of point 2
+        lon2 (float): LON of point 2
         
     Returns:
         float: Distance in nautical miles
@@ -161,16 +161,16 @@ def haversine_vectorized(df):
     Vectorized implementation of the Haversine formula for Dask DataFrames.
     
     Args:
-        df (DataFrame): DataFrame with prev_Latitude, prev_Longitude, curr_Latitude, curr_Longitude columns
+        df (DataFrame): DataFrame with prev_LAT, prev_LON, curr_LAT, curr_LON columns
         
     Returns:
         Series: Distances in nautical miles
     """
     # Convert latitude and longitude from degrees to radians
-    lat1_rad = np.radians(df['prev_Latitude'])
-    lon1_rad = np.radians(df['prev_Longitude'])
-    lat2_rad = np.radians(df['curr_Latitude'])
-    lon2_rad = np.radians(df['curr_Longitude'])
+    lat1_rad = np.radians(df['prev_LAT'])
+    lon1_rad = np.radians(df['prev_LON'])
+    lat2_rad = np.radians(df['curr_LAT'])
+    lon2_rad = np.radians(df['curr_LON'])
     
     # Haversine formula
     dlon = lon2_rad - lon1_rad
@@ -332,7 +332,8 @@ def load_and_preprocess_day(file_path, config, use_dask=True):
             if is_parquet:
                 df = dd.read_parquet(file_path)
             else:  # Default to CSV
-                df = dd.read_csv(file_path)
+                # Handle the 'anomaly' column as object type to avoid conversion errors
+                df = dd.read_csv(file_path, dtype={'anomaly': 'object'})
             
             # Check for required columns
             missing_cols = [col for col in REQUIRED_COLUMNS if col not in df.columns]
@@ -344,15 +345,15 @@ def load_and_preprocess_day(file_path, config, use_dask=True):
             
             # Filter by selected ship types
             if 'SELECTED_SHIP_TYPES' in config and config['SELECTED_SHIP_TYPES']:
-                df = df[df['ShipType'].isin(config['SELECTED_SHIP_TYPES'])]
+                df = df[df['VesselType'].isin(config['SELECTED_SHIP_TYPES'])]
             
-            # Convert Timestamp
-            df['Timestamp'] = dd.to_datetime(df['Timestamp'], 
+            # Convert BaseDateTime
+            df['BaseDateTime'] = dd.to_datetime(df['BaseDateTime'], 
                                            format=config['TIMESTAMP_FORMAT'], 
                                            errors='coerce')
             
             # Ensure numeric types for coordinates, speed, heading, and COG
-            for col in ['Latitude', 'Longitude', 'Speed', 'Heading', 'COG']:
+            for col in ['LAT', 'LON', 'SOG', 'Heading', 'COG']:
                 df[col] = dd.to_numeric(df[col], errors='coerce')
             
             # Only drop rows with missing MMSI as it's the primary identifier
@@ -360,7 +361,7 @@ def load_and_preprocess_day(file_path, config, use_dask=True):
             df = df.dropna(subset=['MMSI'])
             
             # Add a 'date' column for easy grouping/identification
-            df['Date'] = df['Timestamp'].dt.date
+            df['Date'] = df['BaseDateTime'].dt.date
             
             # Compute the final result
             return df.compute()
@@ -370,7 +371,7 @@ def load_and_preprocess_day(file_path, config, use_dask=True):
             if is_parquet:
                 df = pd.read_parquet(file_path)
             else:  # Default to CSV
-                df = pd.read_csv(file_path, low_memory=False)
+                df = pd.read_csv(file_path, low_memory=False, dtype={'anomaly': 'object'})
             
             # Check for required columns
             missing_cols = [col for col in REQUIRED_COLUMNS if col not in df.columns]
@@ -382,15 +383,15 @@ def load_and_preprocess_day(file_path, config, use_dask=True):
             
             # Filter by selected ship types
             if 'SELECTED_SHIP_TYPES' in config and config['SELECTED_SHIP_TYPES']:
-                df = df[df['ShipType'].isin(config['SELECTED_SHIP_TYPES'])]
+                df = df[df['VesselType'].isin(config['SELECTED_SHIP_TYPES'])]
             
-            # Convert Timestamp
-            df['Timestamp'] = pd.to_datetime(df['Timestamp'], 
+            # Convert BaseDateTime
+            df['BaseDateTime'] = pd.to_datetime(df['BaseDateTime'], 
                                            format=config['TIMESTAMP_FORMAT'], 
                                            errors='coerce')
             
             # Ensure numeric types for coordinates, speed, heading, and COG
-            for col in ['Latitude', 'Longitude', 'Speed', 'Heading', 'COG']:
+            for col in ['LAT', 'LON', 'SOG', 'Heading', 'COG']:
                 df[col] = pd.to_numeric(df[col], errors='coerce')
             
             # Only drop rows with missing MMSI as it's the primary identifier
@@ -398,7 +399,7 @@ def load_and_preprocess_day(file_path, config, use_dask=True):
             df.dropna(subset=['MMSI'], inplace=True)
             
             # Add a 'date' column for easy grouping/identification
-            df['Date'] = df['Timestamp'].dt.date
+            df['Date'] = df['BaseDateTime'].dt.date
             
             return df
             
@@ -431,8 +432,8 @@ def create_map_visualization(anomalies_df, output_path):
         return
         
     # Create a map centered on the mean coordinates
-    center_lat = anomalies_df['Latitude'].mean()
-    center_lon = anomalies_df['Longitude'].mean()
+    center_lat = anomalies_df['LAT'].mean()
+    center_lon = anomalies_df['LON'].mean()
     m = folium.Map(location=[center_lat, center_lon], zoom_start=4)
     
     # Add a marker cluster
@@ -466,12 +467,12 @@ def create_map_visualization(anomalies_df, output_path):
         <b>MMSI:</b> {row['MMSI']}<br>
         <b>Anomaly:</b> {row['Type of Anomaly Detected']}<br>
         <b>Date:</b> {row['Date of Anomaly']}<br>
-        <b>Position:</b> {row['Latitude']:.4f}, {row['Longitude']:.4f}
+        <b>Position:</b> {row['LAT']:.4f}, {row['LON']:.4f}
         """
         
         # Add marker
         folium.Marker(
-            location=[row['Latitude'], row['Longitude']],
+            location=[row['LAT'], row['LON']],
             popup=folium.Popup(popup_content, max_width=300),
             icon=folium.Icon(color=color, icon=icon, prefix='fa')
         ).add_to(marker_cluster)
@@ -630,7 +631,7 @@ def _process_anomaly_detection(file_paths, dates_in_order, config, use_dask=True
         report_date = current_date.strftime('%Y-%m-%d')
         
         # Check for null values in critical fields and report them as anomalies
-        null_value_columns = ['Latitude', 'Longitude', 'Speed', 'Heading', 'COG']
+        null_value_columns = ['LAT', 'LON', 'SOG', 'Heading', 'COG']
         for col in null_value_columns:
             if col in df_current_day.columns:
                 # Find ships with null values in this column
@@ -641,15 +642,15 @@ def _process_anomaly_detection(file_paths, dates_in_order, config, use_dask=True
                     
                     for _, row in null_ships.iterrows():
                         # Use non-null values for coordinates if available, otherwise use 0,0
-                        lat = row['Latitude'] if not pd.isna(row['Latitude']) else 0
-                        lon = row['Longitude'] if not pd.isna(row['Longitude']) else 0
+                        lat = row['LAT'] if not pd.isna(row['LAT']) else 0
+                        lon = row['LON'] if not pd.isna(row['LON']) else 0
                         
                         anomalies.append({
                             'Date of Anomaly': report_date,
-                            'Ship Name': row['ShipName'],
+                            'Ship Name': row['VesselName'],
                             'MMSI': row['MMSI'],
-                            'Latitude': lat,
-                            'Longitude': lon,
+                            'LAT': lat,
+                            'LON': lon,
                             'Type of Anomaly Detected': f'Null Value in {col}'
                         })
         
@@ -658,7 +659,7 @@ def _process_anomaly_detection(file_paths, dates_in_order, config, use_dask=True
         # and ship speed is greater than 10 knots
         if config.get('DETECT_COG_HEADING', True) and 'COG' in df_current_day.columns:
             # Filter for ships with speed > MIN_SPEED_FOR_COG_CHECK
-            high_speed_ships = df_current_day[df_current_day['Speed'] >= config['MIN_SPEED_FOR_COG_CHECK']]
+            high_speed_ships = df_current_day[df_current_day['SOG'] >= config['MIN_SPEED_FOR_COG_CHECK']]
             
             if not high_speed_ships.empty:
                 # Calculate absolute difference between COG and Heading
@@ -674,10 +675,10 @@ def _process_anomaly_detection(file_paths, dates_in_order, config, use_dask=True
                     for _, row in cog_heading_anomalies.iterrows():
                         anomalies.append({
                             'Date of Anomaly': report_date,
-                            'Ship Name': row['ShipName'],
+                            'Ship Name': row['VesselName'],
                             'MMSI': row['MMSI'],
-                            'Latitude': row['Latitude'],
-                            'Longitude': row['Longitude'],
+                            'LAT': row['LAT'],
+                            'LON': row['LON'],
                             'Type of Anomaly Detected': f'COG-Heading Inconsistency: {row["angle_diff"]:.1f}° (COG: {row["COG"]:.1f}°, Heading: {row["Heading"]:.1f}°)'
                         })
         
@@ -694,10 +695,10 @@ def _process_anomaly_detection(file_paths, dates_in_order, config, use_dask=True
                 for _, row in beacon_off_last_positions.iterrows():
                     anomalies.append({
                         'Date of Anomaly': report_date,
-                        'Ship Name': row['ShipName'],
+                        'Ship Name': row['VesselName'],
                         'MMSI': row['MMSI'],
-                        'Latitude': row['Latitude'],
-                        'Longitude': row['Longitude'],
+                        'LAT': row['LAT'],
+                        'LON': row['LON'],
                         'Type of Anomaly Detected': 'AIS Beacon Off'
                     })
         
@@ -711,10 +712,10 @@ def _process_anomaly_detection(file_paths, dates_in_order, config, use_dask=True
                 for _, row in beacon_on_first_positions.iterrows():
                     anomalies.append({
                         'Date of Anomaly': report_date,
-                        'Ship Name': row['ShipName'],
+                        'Ship Name': row['VesselName'],
                         'MMSI': row['MMSI'],
-                        'Latitude': row['Latitude'],
-                        'Longitude': row['Longitude'],
+                        'LAT': row['LAT'],
+                        'LON': row['LON'],
                         'Type of Anomaly Detected': 'AIS Beacon On'
                     })
         
@@ -724,15 +725,15 @@ def _process_anomaly_detection(file_paths, dates_in_order, config, use_dask=True
         if common_mmsi:
             # Get the last position from previous day and first position from current day for each MMSI
             df_prev_common = df_previous_day[df_previous_day['MMSI'].isin(common_mmsi)]
-            df_prev_common = df_prev_common.sort_values('Timestamp').groupby('MMSI').last().reset_index()
+            df_prev_common = df_prev_common.sort_values('BaseDateTime').groupby('MMSI').last().reset_index()
             
             df_curr_common = df_current_day[df_current_day['MMSI'].isin(common_mmsi)]
-            df_curr_common = df_curr_common.sort_values('Timestamp').groupby('MMSI').first().reset_index()
+            df_curr_common = df_curr_common.sort_values('BaseDateTime').groupby('MMSI').first().reset_index()
             
             # Merge to get previous and current positions side-by-side
             merged_df = pd.merge(
-                df_prev_common[['MMSI', 'Latitude', 'Longitude', 'ShipName']],
-                df_curr_common[['MMSI', 'Latitude', 'Longitude']],
+                df_prev_common[['MMSI', 'LAT', 'LON', 'VesselName']],
+                df_curr_common[['MMSI', 'LAT', 'LON']],
                 on='MMSI',
                 suffixes=('_prev', '_curr')
             )
@@ -746,8 +747,8 @@ def _process_anomaly_detection(file_paths, dates_in_order, config, use_dask=True
                 # Use apply for smaller datasets
                 merged_df['Distance_NM'] = merged_df.apply(
                     lambda row: haversine_distance_nm(
-                        row['Latitude_prev'], row['Longitude_prev'],
-                        row['Latitude_curr'], row['Longitude_curr']
+                        row['LAT_prev'], row['LON_prev'],
+                        row['LAT_curr'], row['LON_curr']
                     ), axis=1
                 )
             
@@ -757,10 +758,10 @@ def _process_anomaly_detection(file_paths, dates_in_order, config, use_dask=True
                 for _, row in fast_travel_ships.iterrows():
                     anomalies.append({
                         'Date of Anomaly': report_date,
-                        'Ship Name': row['ShipName'],
+                        'Ship Name': row['VesselName'],
                         'MMSI': row['MMSI'],
-                        'Latitude': row['Latitude_curr'],
-                        'Longitude': row['Longitude_curr'],
+                        'LAT': row['LAT_curr'],
+                        'LON': row['LON_curr'],
                         'Type of Anomaly Detected': f'Excessive Travel Distance (Fast): {row["Distance_NM"]:.1f} NM'
                     })
             
@@ -769,10 +770,10 @@ def _process_anomaly_detection(file_paths, dates_in_order, config, use_dask=True
                 for _, row in slow_travel_ships.iterrows():
                     anomalies.append({
                         'Date of Anomaly': report_date,
-                        'Ship Name': row['ShipName'],
+                        'Ship Name': row['VesselName'],
                         'MMSI': row['MMSI'],
-                        'Latitude': row['Latitude_curr'],
-                        'Longitude': row['Longitude_curr'],
+                        'LAT': row['LAT_curr'],
+                        'LON': row['LON_curr'],
                         'Type of Anomaly Detected': f'Excessive Travel Distance (Slow): {row["Distance_NM"]:.1f} NM'
                     })
         
@@ -811,7 +812,7 @@ def _process_anomaly_detection(file_paths, dates_in_order, config, use_dask=True
         overall_map_path = os.path.join(config['OUTPUT_DIRECTORY'], "All Anomalies Map.html")
         create_map_visualization(all_anomalies_df, overall_map_path)
         
-        logger.info(f"AIS Fraud Detection Complete. Found {len(all_anomalies)} anomalies across {num_days_to_analyze} days.")
+        logger.info(f"AIS Fraud Detection Complete. Found {len(all_anomalies)} anomalies across {len(dates_in_order)} days.")
         return all_anomalies_df
     else:
         logger.info(f"AIS Fraud Detection Complete. No anomalies detected.")

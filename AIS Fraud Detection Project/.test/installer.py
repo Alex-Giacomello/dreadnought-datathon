@@ -249,8 +249,13 @@ class InstallerGUI:
     
     def setup_configuration(self):
         """Set up the configuration file"""
-        # Get the script directory
-        script_dir = os.path.dirname(os.path.abspath(__file__))
+        # Get the script directory, handling PyInstaller frozen state
+        if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+            # Running as compiled executable
+            script_dir = os.path.dirname(sys.executable)
+        else:
+            # Running as a script
+            script_dir = os.path.dirname(os.path.abspath(__file__))
         
         # Create config parser
         config = configparser.ConfigParser()
@@ -294,8 +299,13 @@ class InstallerGUI:
     
     def create_shortcut(self):
         """Create a desktop shortcut for the application"""
-        # Get the script directory
-        script_dir = os.path.dirname(os.path.abspath(__file__))
+        # Get the script directory, handling PyInstaller frozen state
+        if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+            # Running as compiled executable
+            script_dir = os.path.dirname(sys.executable)
+        else:
+            # Running as a script
+            script_dir = os.path.dirname(os.path.abspath(__file__))
         
         # Get the desktop directory
         desktop_dir = os.path.join(os.path.expanduser("~"), "Desktop")
@@ -355,6 +365,17 @@ class InstallerGUI:
 
 
 if __name__ == "__main__":
+    try:
+        # Print debug info about execution environment
+        print(f"Python executable: {sys.executable}")
+        print(f"Running in frozen state: {getattr(sys, 'frozen', False)}")
+        if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+            print(f"MEIPASS: {sys._MEIPASS}")
+            print(f"Executable path: {os.path.dirname(sys.executable)}")
+    except Exception as e:
+        print(f"Error during startup: {e}")
+    
+    # Start the GUI
     root = tk.Tk()
     app = InstallerGUI(root)
     root.mainloop()

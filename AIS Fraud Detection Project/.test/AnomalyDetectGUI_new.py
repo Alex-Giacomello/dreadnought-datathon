@@ -10,7 +10,7 @@ It allows users to configure settings, select which anomaly types to detect, and
 import os
 import configparser
 import tkinter as tk
-from tkinter import ttk, filedialog, messagebox
+from tkinter import ttk, filedialog, messagebox, scrolledtext
 from datetime import datetime, timedelta
 import sys
 import subprocess
@@ -20,6 +20,18 @@ import re
 import glob
 import traceback
 import logging
+
+# Import Windows constants if on Windows
+if platform.system() == "Windows":
+    import win32con
+
+# For markdown rendering
+try:
+    import markdown
+    from tkhtmlview import HTMLScrolledText, HTMLText
+    markdown_available = True
+except ImportError:
+    markdown_available = False
 
 # Try to import tkcalendar, display an error if it's not available
 try:
@@ -76,25 +88,25 @@ class AnomalyDetectionGUI:
         # Ship type variables - using dict with ship type number as key and BooleanVar as value
         self.ship_types = {
             70: {'name': 'Cargo, General', 'var': tk.BooleanVar(value=True)},
-            71: {'name': 'Cargo, Hazardous category A', 'var': tk.BooleanVar(value=False)},
-            72: {'name': 'Cargo, Hazardous category B', 'var': tk.BooleanVar(value=False)},
-            73: {'name': 'Cargo, Hazardous category C', 'var': tk.BooleanVar(value=False)},
-            74: {'name': 'Cargo, Hazardous category D', 'var': tk.BooleanVar(value=False)},
-            75: {'name': 'Cargo, Reserved for future use', 'var': tk.BooleanVar(value=False)},
-            76: {'name': 'Cargo, Reserved for future use', 'var': tk.BooleanVar(value=False)},
-            77: {'name': 'Cargo, Reserved for future use', 'var': tk.BooleanVar(value=False)},
-            78: {'name': 'Cargo, Reserved for future use', 'var': tk.BooleanVar(value=False)},
-            79: {'name': 'Cargo, No additional information', 'var': tk.BooleanVar(value=False)},
+            71: {'name': 'Cargo, Hazardous category A', 'var': tk.BooleanVar(value=True)},
+            72: {'name': 'Cargo, Hazardous category B', 'var': tk.BooleanVar(value=True)},
+            73: {'name': 'Cargo, Hazardous category C', 'var': tk.BooleanVar(value=True)},
+            74: {'name': 'Cargo, Hazardous category D', 'var': tk.BooleanVar(value=True)},
+            75: {'name': 'Cargo, Reserved for future use', 'var': tk.BooleanVar(value=True)},
+            76: {'name': 'Cargo, Reserved for future use', 'var': tk.BooleanVar(value=True)},
+            77: {'name': 'Cargo, Reserved for future use', 'var': tk.BooleanVar(value=True)},
+            78: {'name': 'Cargo, Reserved for future use', 'var': tk.BooleanVar(value=True)},
+            79: {'name': 'Cargo, No additional information', 'var': tk.BooleanVar(value=True)},
             80: {'name': 'Tanker, General', 'var': tk.BooleanVar(value=True)},
-            81: {'name': 'Tanker, Hazardous category A', 'var': tk.BooleanVar(value=False)},
-            82: {'name': 'Tanker, Hazardous category B', 'var': tk.BooleanVar(value=False)},
-            83: {'name': 'Tanker, Hazardous category C', 'var': tk.BooleanVar(value=False)},
-            84: {'name': 'Tanker, Hazardous category D', 'var': tk.BooleanVar(value=False)},
-            85: {'name': 'Tanker, Reserved for future use', 'var': tk.BooleanVar(value=False)},
-            86: {'name': 'Tanker, Reserved for future use', 'var': tk.BooleanVar(value=False)},
-            87: {'name': 'Tanker, Reserved for future use', 'var': tk.BooleanVar(value=False)},
-            88: {'name': 'Tanker, Reserved for future use', 'var': tk.BooleanVar(value=False)},
-            89: {'name': 'Tanker, No additional information', 'var': tk.BooleanVar(value=False)}
+            81: {'name': 'Tanker, Hazardous category A', 'var': tk.BooleanVar(value=True)},
+            82: {'name': 'Tanker, Hazardous category B', 'var': tk.BooleanVar(value=True)},
+            83: {'name': 'Tanker, Hazardous category C', 'var': tk.BooleanVar(value=True)},
+            84: {'name': 'Tanker, Hazardous category D', 'var': tk.BooleanVar(value=True)},
+            85: {'name': 'Tanker, Reserved for future use', 'var': tk.BooleanVar(value=True)},
+            86: {'name': 'Tanker, Reserved for future use', 'var': tk.BooleanVar(value=True)},
+            87: {'name': 'Tanker, Reserved for future use', 'var': tk.BooleanVar(value=True)},
+            88: {'name': 'Tanker, Reserved for future use', 'var': tk.BooleanVar(value=True)},
+            89: {'name': 'Tanker, No additional information', 'var': tk.BooleanVar(value=True)}
         }
         self.min_travel_nm = tk.DoubleVar(value=200)
         self.max_travel_nm = tk.DoubleVar(value=550)
@@ -102,11 +114,11 @@ class AnomalyDetectionGUI:
         self.min_speed_for_cog_check = tk.DoubleVar(value=10)
         
         # Date range variables (replacing num_days)
-        self.use_date_range = tk.BooleanVar(value=False)  # Whether to use date range or days back
+        self.use_date_range = tk.BooleanVar(value=True)  # Use date range by default
         self.num_days = tk.IntVar(value=5)  # Still keep this for backward compatibility
-        today = datetime.now().date()
-        self.start_date = tk.StringVar(value=today - timedelta(days=5))  # Default to 5 days ago
-        self.end_date = tk.StringVar(value=today)  # Default to today
+        # Set specific default dates for the AIS test data
+        self.start_date = tk.StringVar(value="2024-10-01")  # Default to Oct 1, 2024
+        self.end_date = tk.StringVar(value="2024-10-05")  # Default to Oct 5, 2024
         
         self.use_dask = tk.BooleanVar(value=True)
         
@@ -115,11 +127,11 @@ class AnomalyDetectionGUI:
         self.notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
         
         # Create tabs
-        self.create_general_tab()
+        self.create_date_selection_tab()
         self.create_ship_types_tab()
         self.create_anomaly_types_tab()
-        self.create_thresholds_tab()
         self.create_advanced_tab()
+        self.create_readme_tab()
         
         # Create bottom buttons
         self.create_bottom_buttons()
@@ -127,24 +139,26 @@ class AnomalyDetectionGUI:
         # Load config if exists
         self.load_config()
 
-    def create_general_tab(self):
-        """Create the General tab with basic settings"""
-        general_frame = ttk.Frame(self.notebook)
-        self.notebook.add(general_frame, text="General")
+    def create_date_selection_tab(self):
+        """Create the Startup tab with descriptive text and date range settings"""
+        date_selection_frame = ttk.Frame(self.notebook)
+        self.notebook.add(date_selection_frame, text="Startup")
         
-        # Data Directory
-        ttk.Label(general_frame, text="Data Directory:").grid(row=0, column=0, sticky=tk.W, padx=5, pady=5)
-        ttk.Entry(general_frame, textvariable=self.data_directory, width=50).grid(row=0, column=1, padx=5, pady=5)
-        ttk.Button(general_frame, text="Browse...", command=self.browse_data_directory).grid(row=0, column=2, padx=5, pady=5)
+        # Add descriptive text at the top
+        desc_frame = ttk.Frame(date_selection_frame)
+        desc_frame.grid(row=0, column=0, columnspan=3, sticky=tk.W+tk.E, padx=5, pady=5)
         
-        # Output Directory
-        ttk.Label(general_frame, text="Output Directory:").grid(row=1, column=0, sticky=tk.W, padx=5, pady=5)
-        ttk.Entry(general_frame, textvariable=self.output_directory, width=50).grid(row=1, column=1, padx=5, pady=5)
-        ttk.Button(general_frame, text="Browse...", command=self.browse_output_directory).grid(row=1, column=2, padx=5, pady=5)
+        desc_text = """This system analyzes Automatic Identification System (AIS) data to detect potentially fraudulent shipping activities. It does so by identifing anomalies such as vessels turning off their AIS beacons (sudden disappearances), sudden reappearances, unusual travel distances, and large inconsistencies between reported Course Over Ground (COG) and Heading.  Users have the option of examining data over specific date ranges, or examining data leading up to the current date.  
+NOTE: In this test implementation only data from 1 OCT 2024 to 31 MAR 2025 is available for use.
+
+Select the time period on this tab and press the Run Analysis button to execute your inquery.  You can select the specific types of ships and anomalies you want to search for in those tabs.  The Data and Results folders can be set on the Advanced Tab."""
+        
+        desc_label = ttk.Label(desc_frame, text=desc_text, wraplength=750, justify="left")
+        desc_label.pack(fill=tk.X, padx=10, pady=10)
         
         # Time Range Selection Frame
-        time_frame = ttk.LabelFrame(general_frame, text="Time Range Selection")
-        time_frame.grid(row=2, column=0, columnspan=3, sticky=tk.W+tk.E, padx=5, pady=10)
+        time_frame = ttk.LabelFrame(date_selection_frame, text="Time Range Selection")
+        time_frame.grid(row=1, column=0, columnspan=3, sticky=tk.W+tk.E, padx=5, pady=10)
         
         # Radio buttons for selection method
         ttk.Radiobutton(time_frame, text="Use days back from today", variable=self.use_date_range, 
@@ -177,10 +191,9 @@ class AnomalyDetectionGUI:
                                            state='readonly')
             self.end_date_picker.pack(side=tk.LEFT, padx=2)
             
-            # Set default dates
-            today = datetime.now().date()
-            self.start_date_picker.set_date(today - timedelta(days=5))
-            self.end_date_picker.set_date(today)
+            # Set default dates to Oct 1-5, 2024
+            self.start_date_picker.set_date(datetime(2024, 10, 1).date())
+            self.end_date_picker.set_date(datetime(2024, 10, 5).date())
         else:
             # If tkcalendar is not available, use basic entry fields with validation
             self.date_warning = ttk.Label(date_range_frame, 
@@ -199,10 +212,9 @@ class AnomalyDetectionGUI:
             self.end_date_entry = ttk.Entry(date_fields_frame, width=12)
             self.end_date_entry.pack(side=tk.LEFT, padx=2)
             
-            # Set default dates
-            today = datetime.now().date()
-            self.start_date_entry.insert(0, (today - timedelta(days=5)).strftime('%Y-%m-%d'))
-            self.end_date_entry.insert(0, today.strftime('%Y-%m-%d'))
+            # Set default dates to Oct 1-5, 2024
+            self.start_date_entry.insert(0, "2024-10-01")
+            self.end_date_entry.insert(0, "2024-10-05")
             
             # Disable date range option if tkcalendar not available
             if not tkcalendar_available:
@@ -212,10 +224,8 @@ class AnomalyDetectionGUI:
         
         # Initialize the state of date inputs based on self.use_date_range
         self.toggle_date_selection()
-        
-        # Ship Type Selection note
-        ttk.Label(general_frame, text="Ship Types:").grid(row=3, column=0, sticky=tk.W, padx=5, pady=5)
-        ttk.Label(general_frame, text="Use the 'Ship Types' tab to select specific ship types").grid(row=3, column=1, sticky=tk.W, padx=5, pady=5)
+
+    # General tab has been removed
 
     def create_ship_types_tab(self):
         """Create the Ship Types tab with checkboxes for each ship type"""
@@ -312,24 +322,27 @@ class AnomalyDetectionGUI:
             self.ship_types[ship_type]['var'].set(False)
     
     def create_anomaly_types_tab(self):
-        """Create the Anomaly Types tab with checkboxes for each type"""
+        """Create the Anomaly Types tab with checkboxes for each type and thresholds"""
         anomaly_frame = ttk.Frame(self.notebook)
         self.notebook.add(anomaly_frame, text="Anomaly Types")
         
-        ttk.Label(anomaly_frame, text="Select anomaly types to detect:", font=("", 12)).grid(row=0, column=0, sticky=tk.W, padx=5, pady=10)
+        # Left panel - anomaly types selection
+        types_frame = ttk.LabelFrame(anomaly_frame, text="Select Anomaly Types to Detect")
+        types_frame.grid(row=0, column=0, sticky=tk.N+tk.W, padx=10, pady=10)
         
         # Create checkboxes for each anomaly type
         for i, (anomaly_type, var) in enumerate(self.anomaly_types.items()):
-            ttk.Checkbutton(anomaly_frame, text=anomaly_type, variable=var).grid(row=i+1, column=0, sticky=tk.W, padx=20, pady=5)
+            ttk.Checkbutton(types_frame, text=anomaly_type, variable=var).grid(row=i, column=0, sticky=tk.W, padx=20, pady=5)
             
-        # Add a "Select All" button
-        ttk.Button(anomaly_frame, text="Select All", command=self.select_all_anomalies).grid(row=len(self.anomaly_types)+1, column=0, sticky=tk.W, padx=5, pady=10)
-        ttk.Button(anomaly_frame, text="Deselect All", command=self.deselect_all_anomalies).grid(row=len(self.anomaly_types)+1, column=1, sticky=tk.W, padx=5, pady=10)
-
-    def create_thresholds_tab(self):
-        """Create the Thresholds tab with settings for anomaly detection thresholds"""
-        thresholds_frame = ttk.Frame(self.notebook)
-        self.notebook.add(thresholds_frame, text="Thresholds")
+        # Add "Select All" buttons
+        button_frame = ttk.Frame(types_frame)
+        button_frame.grid(row=len(self.anomaly_types), column=0, sticky=tk.W, padx=5, pady=10, columnspan=2)
+        ttk.Button(button_frame, text="Select All", command=self.select_all_anomalies).grid(row=0, column=0, sticky=tk.W, padx=5)
+        ttk.Button(button_frame, text="Deselect All", command=self.deselect_all_anomalies).grid(row=0, column=1, sticky=tk.W, padx=5)
+        
+        # Right panel - thresholds
+        thresholds_frame = ttk.LabelFrame(anomaly_frame, text="Anomaly Detection Thresholds")
+        thresholds_frame.grid(row=0, column=1, sticky=tk.N+tk.W, padx=10, pady=10)
         
         # Travel distance thresholds
         ttk.Label(thresholds_frame, text="Travel Distance Thresholds (nautical miles):", font=("", 12)).grid(row=0, column=0, columnspan=2, sticky=tk.W, padx=5, pady=10)
@@ -349,15 +362,215 @@ class AnomalyDetectionGUI:
         ttk.Label(thresholds_frame, text="Minimum speed for check (knots):").grid(row=5, column=0, sticky=tk.W, padx=5, pady=5)
         ttk.Entry(thresholds_frame, textvariable=self.min_speed_for_cog_check, width=10).grid(row=5, column=1, sticky=tk.W, padx=5, pady=5)
 
+    # Thresholds tab removed - content moved to Anomaly Types tab
+    
+    def create_readme_tab(self):
+        """Create a README tab that shows the content of 1. README.md"""
+        readme_frame = ttk.Frame(self.notebook)
+        self.notebook.add(readme_frame, text="README")
+        
+        # Create a button frame at the top
+        button_frame = ttk.Frame(readme_frame)
+        button_frame.pack(fill=tk.X, side=tk.TOP, padx=10, pady=5)
+        
+        # Add a "View in Browser" button
+        ttk.Button(button_frame, text="View README in Browser", command=self.open_readme_in_browser).pack(side=tk.RIGHT)
+        
+        if markdown_available:
+            # Create an HTML viewer for rendered markdown
+            self.readme_viewer = HTMLScrolledText(readme_frame, padx=10, pady=10)
+            self.readme_viewer.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+            # Set background color to match the application
+            self.readme_viewer.set_html_content("<body style='background-color: #f0f0f0;'></body>")
+        else:
+            # Fallback to plain text if markdown rendering is not available
+            self.readme_viewer = scrolledtext.ScrolledText(readme_frame, wrap=tk.WORD, font=("Consolas", 10), padx=10, pady=10)
+            self.readme_viewer.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+            self.readme_viewer.config(state=tk.DISABLED)  # Make it read-only
+        
+        # Load the README content
+        self.load_readme_content()
+        
+        # Bind tab selection to refresh the README content
+        self.notebook.bind("<<NotebookTabChanged>>", self.on_tab_changed)
+    
+    def load_readme_content(self):
+        """Load and render the content of 1. README.md"""
+        try:
+            # Get the path to the README file
+            if getattr(sys, 'frozen', False):
+                # Running as compiled executable
+                script_dir = os.path.dirname(sys.executable)
+            else:
+                # Running as a script
+                script_dir = os.path.dirname(os.path.abspath(__file__))
+                
+            readme_path = os.path.join(script_dir, "1. README.md")
+            
+            if os.path.exists(readme_path):
+                with open(readme_path, 'r') as file:
+                    readme_content = file.read()
+                
+                if markdown_available:
+                    # Convert markdown to HTML
+                    html_content = markdown.markdown(
+                        readme_content,
+                        extensions=['tables', 'fenced_code', 'nl2br', 'codehilite']
+                    )
+                    
+                    # Add styling to make it look nice
+                    styled_html = f"""
+                    <html>
+                    <head>
+                        <style>
+                            body {{ font-family: Arial, sans-serif; padding: 20px; }}
+                            h1, h2, h3, h4, h5, h6 {{ color: #00008B; }}
+                            h1 {{ border-bottom: 2px solid #00008B; padding-bottom: 5px; }}
+                            h2 {{ border-bottom: 1px solid #CCCCCC; padding-bottom: 2px; }}
+                            code {{ background-color: #f8f8f8; padding: 2px 4px; border-radius: 4px; }}
+                            pre {{ background-color: #f8f8f8; padding: 10px; border-radius: 4px; overflow-x: auto; }}
+                            a {{ color: #0066CC; text-decoration: none; }}
+                            a:hover {{ text-decoration: underline; }}
+                            blockquote {{ border-left: 4px solid #CCCCCC; padding-left: 10px; color: #555555; }}
+                            table {{ border-collapse: collapse; width: 100%; }}
+                            th, td {{ border: 1px solid #ddd; padding: 8px; }}
+                            tr:nth-child(even) {{ background-color: #f2f2f2; }}
+                        </style>
+                    </head>
+                    <body>
+                        {html_content}
+                    </body>
+                    </html>
+                    """
+                    
+                    # Display the HTML
+                    self.readme_viewer.set_html_content(styled_html)
+                else:
+                    # Plain text fallback with basic formatting
+                    self.readme_viewer.config(state=tk.NORMAL)
+                    self.readme_viewer.delete(1.0, tk.END)
+                    
+                    # Format the content for better readability in plain text
+                    lines = readme_content.split('\n')
+                    for line in lines:
+                        # Format headings
+                        if line.startswith('# '):
+                            self.readme_viewer.insert(tk.END, line[2:].upper() + '\n\n', 'heading1')
+                        elif line.startswith('## '):
+                            self.readme_viewer.insert(tk.END, line[3:].upper() + '\n\n', 'heading2')
+                        elif line.startswith('### '):
+                            self.readme_viewer.insert(tk.END, line[4:] + '\n\n', 'heading3')
+                        # Code blocks
+                        elif line.startswith('```'):
+                            self.readme_viewer.insert(tk.END, '---CODE---\n', 'code')
+                        # Regular text
+                        else:
+                            self.readme_viewer.insert(tk.END, line + '\n')
+                    
+                    # Configure text tags for styling
+                    self.readme_viewer.tag_configure('heading1', font=('Consolas', 14, 'bold'))
+                    self.readme_viewer.tag_configure('heading2', font=('Consolas', 12, 'bold'))
+                    self.readme_viewer.tag_configure('heading3', font=('Consolas', 11, 'bold'))
+                    self.readme_viewer.tag_configure('code', font=('Consolas', 9), background='#f0f0f0')
+                    
+                    self.readme_viewer.config(state=tk.DISABLED)
+            else:
+                # Handle missing file
+                if markdown_available:
+                    self.readme_viewer.set_html_content(f"<p>README file not found: {readme_path}</p>")
+                else:
+                    self.readme_viewer.config(state=tk.NORMAL)
+                    self.readme_viewer.delete(1.0, tk.END)
+                    self.readme_viewer.insert(tk.END, "README file not found: " + readme_path)
+                    self.readme_viewer.config(state=tk.DISABLED)
+        except Exception as e:
+            # Handle errors
+            error_message = f"Error loading README: {str(e)}"
+            if markdown_available:
+                self.readme_viewer.set_html_content(f"<p>{error_message}</p>")
+            else:
+                self.readme_viewer.config(state=tk.NORMAL)
+                self.readme_viewer.delete(1.0, tk.END)
+                self.readme_viewer.insert(tk.END, error_message)
+                self.readme_viewer.config(state=tk.DISABLED)
+    
+    def on_tab_changed(self, event):
+        """Called when a tab is selected"""
+        current_tab = self.notebook.index(self.notebook.select())
+        
+        # Check if the README tab is selected
+        if self.notebook.tab(current_tab, "text") == "README":
+            # Reload the README content to ensure it's up to date
+            self.load_readme_content()
+            
+    def open_readme_in_browser(self):
+        """Open the README.md file in the default web browser"""
+        try:
+            if getattr(sys, 'frozen', False):
+                script_dir = os.path.dirname(sys.executable)
+            else:
+                script_dir = os.path.dirname(os.path.abspath(__file__))
+                
+            readme_path = os.path.join(script_dir, "1. README.md")
+            
+            if os.path.exists(readme_path):
+                # Generate a temporary HTML file
+                import tempfile
+                temp_dir = tempfile.gettempdir()
+                temp_html = os.path.join(temp_dir, "readme_preview.html")
+                
+                with open(readme_path, 'r') as md_file:
+                    content = md_file.read()
+                    
+                # Create a simple HTML wrapper
+                html_content = f"""
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>README - AIS Shipping Fraud Detection</title>
+                    <style>
+                        body {{ font-family: Arial, sans-serif; margin: 40px; line-height: 1.6; }}
+                        pre {{ background-color: #f4f4f4; padding: 10px; border-radius: 5px; overflow-x: auto; }}
+                        code {{ background-color: #f4f4f4; padding: 2px 4px; border-radius: 3px; }}
+                        h1, h2, h3, h4 {{ color: #333; }}
+                        a {{ color: #0066cc; }}
+                    </style>
+                </head>
+                <body>
+                    <pre>{content}</pre>
+                </body>
+                </html>
+                """
+                
+                with open(temp_html, 'w') as html_file:
+                    html_file.write(html_content)
+                    
+                # Open the HTML file in the default browser
+                import webbrowser
+                webbrowser.open('file://' + os.path.realpath(temp_html))
+            else:
+                messagebox.showinfo("File Not Found", f"README file not found: {readme_path}")
+        except Exception as e:
+            messagebox.showerror("Error", f"Could not open README in browser: {str(e)}")
+
+
     def create_advanced_tab(self):
         """Create the Advanced tab with additional settings"""
         advanced_frame = ttk.Frame(self.notebook)
         self.notebook.add(advanced_frame, text="Advanced")
         
-        # Use Dask for processing
-        ttk.Checkbutton(advanced_frame, text="Use Dask for parallel processing", variable=self.use_dask).grid(row=0, column=0, sticky=tk.W, padx=5, pady=5)
+        # Data Directory
+        ttk.Label(advanced_frame, text="Data Directory:").grid(row=0, column=0, sticky=tk.W, padx=5, pady=5)
+        ttk.Entry(advanced_frame, textvariable=self.data_directory, width=50).grid(row=0, column=1, padx=5, pady=5)
+        ttk.Button(advanced_frame, text="Browse...", command=self.browse_data_directory).grid(row=0, column=2, padx=5, pady=5)
         
-        # Add more advanced options as needed
+        # Output Directory
+        ttk.Label(advanced_frame, text="Output Directory:").grid(row=1, column=0, sticky=tk.W, padx=5, pady=5)
+        ttk.Entry(advanced_frame, textvariable=self.output_directory, width=50).grid(row=1, column=1, padx=5, pady=5)
+        ttk.Button(advanced_frame, text="Browse...", command=self.browse_output_directory).grid(row=1, column=2, padx=5, pady=5)
+        
+        # Use Dask for processing
+        ttk.Checkbutton(advanced_frame, text="Use Dask for parallel processing", variable=self.use_dask).grid(row=2, column=0, sticky=tk.W, padx=5, pady=5)
 
     def create_bottom_buttons(self):
         """Create buttons at the bottom of the window"""
@@ -694,7 +907,7 @@ class AnomalyDetectionGUI:
             if platform.system() == "Windows":
                 startupinfo = subprocess.STARTUPINFO()
                 startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-                startupinfo.wShowWindow = subprocess.SW_SHOW
+                startupinfo.wShowWindow = win32con.SW_SHOW  # Use win32con.SW_SHOW instead of subprocess.SW_SHOW
                 process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, 
                                          text=True, startupinfo=startupinfo)
             else:
@@ -792,8 +1005,8 @@ class AnomalyDetectionGUI:
                 
                 # Check for required columns
                 required_columns = [
-                    'MMSI', 'ShipName', 'ShipType', 'Latitude', 'Longitude',
-                    'Timestamp', 'Speed', 'Heading', 'COG'
+                    'MMSI', 'VesselName', 'VesselType', 'LAT', 'LON',
+                    'BaseDateTime', 'SOG', 'Heading', 'COG'
                 ]
                 
                 missing_columns = [col for col in required_columns if col not in sample_df.columns]
@@ -883,7 +1096,7 @@ class AnomalyDetectionGUI:
             config.read(os.path.join(script_dir, "config.ini"))
             
             # Check for required sections
-            required_sections = ["DEFAULT", "SHIP_FILTERS", "ANOMALY_THRESHOLDS", "TIMESTAMPS"]
+            required_sections = ["DEFAULT", "SHIP_FILTERS", "ANOMALY_THRESHOLDS"]
             missing_sections = [section for section in required_sections if section not in config]
             
             if missing_sections:
