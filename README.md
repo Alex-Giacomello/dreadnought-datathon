@@ -9,6 +9,7 @@ Instructions:
 - Download the files from .test into a single folder
 - Open SFD_GUI.py in a python environment
 - Set your search and output parameters.  Don't forget to set your Data and Output Folders.  If you don't, it won't find any data.  If it found data - it defaults to a C: drive folder.
+- Click Run Analysis, sit back, and watch the magic..
 
 **NOTE Start Small, just use the defaults for your first run.**
 
@@ -18,6 +19,12 @@ Large dataset searches will take *HOURS*
 - Moved the .test folder forward in the repository to ease access
 - Significantly trimmed down the number of files required to run the code
 - Added S3 integration to the project
+
+## ** Udates to .dev**
+
+- working on so GUI-to-Results enhancements
+- beginning to work on AI integration by building an LLM that uses Claud Sonnet as the base
+- *trying* to speed up processing, we will need GPUs (plural) to put everything together for a "live" demo.
 
 
 ## **3 NOV 2025 updates**
