@@ -1,12 +1,12 @@
 # dreadnought-datathon
 
-## **7 NOV Updates**
+# **7 NOV Updates**
 
 ## **Updates to .test**
 
 ** Beta 1.0 is posted for testing - Please help me out and try it on *your* machine
 
-# Instructions:
+## Instructions:
 - Download the files from .test into a single folder
 - Open SFD_GUI.py in a python environment
 - Set your search and output parameters.  Don't forget to set your Data and Output Folders.  If you don't, it won't find any data.  If it found data - it defaults to a C: drive folder.
