@@ -1,0 +1,33 @@
+# Core LangChain packages
+langchain>=0.1.7
+langchain_community>=0.0.16
+langchain_core>=0.1.17
+
+# Optional but recommended LangChain packages
+langchain_classic>=0.0.1
+langchain-text-splitters>=0.0.1
+
+# LLM integration
+langchain-anthropic>=0.1.1
+anthropic>=0.8.0
+
+# Core dependencies
+python-dotenv>=1.0.0
+pydantic>=2.0.0
+packaging>=23.0
+
+# Tool dependencies
+duckduckgo_search>=4.0.0
+wikipedia>=1.4.0
+requests>=2.31.0
+
+# Data processing & visualization
+pandas>=2.0.0
+matplotlib>=3.7.0
+seaborn
+folium
+python-magic
+python-magic-bin
+
+#Search
+serpapi>=1.0.0
