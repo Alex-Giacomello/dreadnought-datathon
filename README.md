@@ -1,10 +1,10 @@
 # dreadnought-datathon
 
-## **7 NOV Updates***
+## **7 NOV Updates**
 
 ## ** Updates to .test **
 
-Beta 1.0 is posted for testing
+** Beta 1.0 is posted for testing - Please help me out and try it on *your* machine
 Instructions:
 - Download the files from .test into a single folder
 - Open SFD_GUI.py in a python environment
@@ -20,11 +20,11 @@ Large dataset searches will take *HOURS*
 - Significantly trimmed down the number of files required to run the code
 - Added S3 integration to the project
 
-## ** Udates to .dev**
+## ** Updates to .dev**
 
 - working on so GUI-to-Results enhancements
 - beginning to work on AI integration by building an LLM that uses Claud Sonnet as the base
-- *trying* to speed up processing, we will need GPUs (plural) to put everything together for a "live" demo.
+- *trying* to speed up processing, we will need GPUs (plural) to put everything together for a *"live"* demo.
 
 
 ## **3 NOV 2025 updates**
