@@ -14,7 +14,7 @@
 
 **NOTE Start Small, just use the defaults for your first run.**
 
-Large dataset searches will take *HOURS*
+Large dataset searches will take *HOURS* if you are producing the Pathway Maps
 
 ## Other updates:
 - Moved the .test folder forward in the repository to ease access
@@ -22,9 +22,9 @@ Large dataset searches will take *HOURS*
 - Added S3 integration to the project
 
 ## **Updates to .dev**
-
-- working on so GUI-to-Results enhancements
-- beginning to work on AI integration by building an LLM that uses Claud Sonnet as the base
+- working on some GUI-to-Results enhancements,
+- working on heatmap and path map enhancements. Any ideas on speeding up pathway generation are welcome,
+- beginning to work on AI integration by building an LLM that uses Claud Sonnet as the base,
 - *trying* to speed up processing, we will need GPUs (plural) to put everything together for a *"live"* demo.
 
 
