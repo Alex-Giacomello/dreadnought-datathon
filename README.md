@@ -16,12 +16,12 @@
 
 Large dataset searches will take *HOURS*
 
-
+###Other updates:
 - Moved the .test folder forward in the repository to ease access
 - Significantly trimmed down the number of files required to run the code
 - Added S3 integration to the project
 
-## ** Updates to .dev**
+## **Updates to .dev**
 
 - working on so GUI-to-Results enhancements
 - beginning to work on AI integration by building an LLM that uses Claud Sonnet as the base
