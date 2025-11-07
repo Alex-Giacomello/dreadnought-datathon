@@ -16,7 +16,7 @@
 
 Large dataset searches will take *HOURS*
 
-##Other updates:
+## Other updates:
 - Moved the .test folder forward in the repository to ease access
 - Significantly trimmed down the number of files required to run the code
 - Added S3 integration to the project
