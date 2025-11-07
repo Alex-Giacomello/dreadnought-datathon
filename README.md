@@ -2,7 +2,7 @@
 
 ## **7 NOV Updates**
 
-## ** Updates to .test **
+## **Updates to .test**
 
 ** Beta 1.0 is posted for testing - Please help me out and try it on *your* machine
 
