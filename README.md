@@ -9,7 +9,7 @@
 ## Instructions:
 - Download the files from .test into a single folder
 - Open SFD_GUI.py in a python environment
-- Set your search and output parameters.  Don't forget to set your Data and Output Folders.  If you don't, it won't find any data.  If it found data - it defaults to a C: drive folder.
+- Set your search and output parameters.  Don't forget to set your Data and Output Folders.  If you don't, it won't find any data.  If it found data, but didn't set you output folder - it defaults to a C: drive folder.
 - Click Run Analysis, sit back, and watch the magic..
 
 **NOTE Start Small, just use the defaults for your first run.**
