@@ -4,7 +4,7 @@
 
 ## **Updates to .test**
 
-** Beta 1.0 is posted for testing - Please help me out and try it on *your* machine
+**Beta 1.0 is posted for testing - Please help me out and try it on *your* machine**
 
 ## Instructions:
 - Download the files from .test into a single folder
