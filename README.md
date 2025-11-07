@@ -24,14 +24,14 @@ Large dataset searches will take *HOURS* if you are producing the Pathway Maps
 ## *Current Variables to play with (defaults shown)
 
 [DEFAULT]\
-data_directory = C:/Users/616180/OneDrive - BOOZ ALLEN HAMILTON/Documents/GitHub/dreadnought-datathon/AIS Fraud Detection Project/.dev/AIS_Data\
-output_directory = C:/Users/616180/OneDrive - BOOZ ALLEN HAMILTON/Documents/SFD Test\
+data_directory = C:/AIS_Data\
+output_directory = C:/AIS_SFD_Results\
 start_date = 2024-10-15\
 end_date = 2024-10-17\
 \
 [Paths]\
-data_directory = C:/Users/616180/OneDrive - BOOZ ALLEN HAMILTON/Documents/GitHub/dreadnought-datathon/AIS Fraud Detection Project/.dev/AIS_Data\
-output_directory = C:/Users/616180/OneDrive - BOOZ ALLEN HAMILTON/Documents/SFD Test\
+data_directory = C:/YourDataFolder/Data
+output_directory = C:/YourResultsFolder
 \
 [SHIP_FILTERS]\
 selected_ship_types = 70\
