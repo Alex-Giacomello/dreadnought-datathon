@@ -22,6 +22,119 @@ import re
 import platform
 import sys
 from datetime import datetime, timedelta
+import subprocess
+import importlib
+import importlib.metadata  # Modern replacement for pkg_resources
+
+
+def check_dependencies():
+    """
+    Check if all required dependencies are installed.
+    If not, offer to install them from requirements.txt.
+    
+    Returns:
+        bool: True if all dependencies are satisfied, False otherwise
+    """
+    logger = logging.getLogger(__name__)
+    logger.info("Checking dependencies...")
+    
+    # Find the requirements.txt file (look in script directory first)
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    req_file = os.path.join(script_dir, "requirements.txt")
+    
+    # If not found in script directory, check current working directory
+    if not os.path.exists(req_file):
+        req_file = os.path.join(os.getcwd(), "requirements.txt")
+        if not os.path.exists(req_file):
+            logger.warning("requirements.txt not found in script directory or current working directory")
+            return True  # Continue without checking
+    
+    try:
+        # Parse requirements file
+        requirements = []
+        with open(req_file, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith('#') and not line.startswith('-e'):
+                    # Strip off version specifiers
+                    if ';' in line:
+                        # Handle platform-specific requirements
+                        req, condition = line.split(';', 1)
+                        req = req.strip()
+                        condition = condition.strip()
+                        
+                        # Check if this requirement applies to current platform
+                        if 'platform_system==' in condition:
+                            platform_name = condition.split('==')[1].strip().strip("'").strip('"')
+                            if platform.system() != platform_name:
+                                continue  # Skip this requirement if platform doesn't match
+                    else:
+                        req = line
+                    
+                    if '>=' in req:
+                        req = req.split('>=')[0]
+                    elif '==' in req:
+                        req = req.split('==')[0]
+                    elif '<=' in req:
+                        req = req.split('<=')[0]
+                    
+                    req = req.strip()
+                    if req:
+                        requirements.append(req)
+        
+        # Check installed packages
+        missing = []
+        for req in requirements:
+            try:
+                importlib.import_module(req.lower().replace('-', '_'))
+            except ImportError:
+                try:
+                    # Double-check with importlib.metadata as some package names don't match import names
+                    importlib.metadata.version(req)
+                except importlib.metadata.PackageNotFoundError:
+                    missing.append(req)
+        
+        if missing:
+            logger.warning(f"Missing dependencies: {', '.join(missing)}")
+            
+            # On Windows, check for admin rights since some installs may require it
+            admin_needed = False
+            if platform.system() == "Windows" and any(pkg in ["pywin32"] for pkg in missing):
+                admin_needed = True
+                logger.warning("Some dependencies may require administrator privileges to install.")
+            
+            # Ask to install missing dependencies
+            if admin_needed:
+                print("\nWARNING: Some dependencies require administrator privileges to install.")
+                print("Please run this script with administrator privileges or install manually:")
+                print(f"pip install {' '.join(missing)}")
+                return False
+            else:
+                print(f"\nMissing dependencies: {', '.join(missing)}")
+                resp = input("Would you like to install them now? (y/n): ").strip().lower()
+                
+                if resp in ('y', 'yes'):
+                    logger.info("Installing missing dependencies...")
+                    try:
+                        subprocess.check_call([sys.executable, "-m", "pip", "install", "-r", req_file])
+                        logger.info("Dependencies installed successfully!")
+                        return True
+                    except subprocess.CalledProcessError:
+                        logger.error("Failed to install dependencies. Please install them manually.")
+                        print(f"Please install the following dependencies manually: {', '.join(missing)}")
+                        return False
+                else:
+                    logger.warning("Missing dependencies will not be installed. Some features may not work.")
+                    print("You can install dependencies manually with:")
+                    print(f"pip install {' '.join(missing)}")
+                    return False
+        
+        logger.info("All dependencies are satisfied.")
+        return True
+    
+    except Exception as e:
+        logger.error(f"Error checking dependencies: {e}")
+        return True  # Continue anyway
 import boto3
 import botocore.exceptions
 from urllib.parse import urlparse
@@ -43,15 +156,21 @@ import math
 
 # Try to import GPU libraries (RAPIDS ecosystem)
 GPU_AVAILABLE = False
-try:
-    import cudf
-    import cupy as cp
-    from cuml.neighbors import NearestNeighbors as CumlNearestNeighbors
-    GPU_AVAILABLE = True
-except ImportError:
-    pass
- 
-# Set up logging
+
+# Function to check if conda is available
+def is_conda_available():
+    try:
+        # Check if conda is in PATH
+        result = subprocess.run(['conda', '--version'], 
+                               capture_output=True, text=True, check=False)
+        return result.returncode == 0
+    except:
+        return False
+
+# Define GPU_AVAILABLE flag before any imports
+GPU_AVAILABLE = False
+
+# Set up logging first
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -61,6 +180,12 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger(__name__)
+
+# The application should still run without GPU support, so we don't attempt installation
+# The GPU installation is handled separately by the GUI when the user explicitly requests it
+        
+if not GPU_AVAILABLE:
+    logger.info("Running without GPU acceleration")
 
 
 def suppress_warnings(enabled=True):
@@ -309,7 +434,7 @@ def parse_s3_uri(uri):
     return bucket, prefix
 
 
-def list_s3_files_by_date_range(s3_uri, start_date, end_date):
+def list_s3_files_by_date_range(s3_uri, start_date, end_date, config=None):
     """
     Get AIS data files from S3 for a specific date range based on their filenames.
     Supports both .csv and .parquet files with filenames in YYYY-MM-DD format.
@@ -318,6 +443,7 @@ def list_s3_files_by_date_range(s3_uri, start_date, end_date):
         s3_uri (str): S3 URI in the format s3://bucket-name/prefix/
         start_date (date): Start date for file selection
         end_date (date): End date for file selection
+        config (dict, optional): Configuration dictionary containing AWS credentials
         
     Returns:
         tuple: (selected_files, selected_dates)
@@ -325,14 +451,52 @@ def list_s3_files_by_date_range(s3_uri, start_date, end_date):
     try:
         bucket_name, prefix = parse_s3_uri(s3_uri)
         
-        # Create an S3 client with session token if available
-        if 'AWS_SESSION_TOKEN' in os.environ:
-            s3 = boto3.client('s3', 
-                             aws_access_key_id=os.environ.get('AWS_ACCESS_KEY_ID'),
-                             aws_secret_access_key=os.environ.get('AWS_SECRET_ACCESS_KEY'),
-                             aws_session_token=os.environ.get('AWS_SESSION_TOKEN'))
+        # Create an S3 client with credentials from config - using keys method only
+        if config and 'AWS' in config:
+            region = config['AWS'].get('s3_region', '')
+            
+            # Get AWS credentials from config
+            access_key = config['AWS'].get('s3_access_key', '')
+            secret_key = config['AWS'].get('s3_secret_key', '')
+            session_token = config['AWS'].get('s3_session_token', '')
+            
+            if access_key and secret_key:
+                # Debug output (masking most of the key for security)
+                access_key_masked = access_key[:4] + "..." + access_key[-4:] if len(access_key) > 8 else "[empty]"
+                session_token_len = len(session_token) if session_token else 0
+                logger.info(f"Creating S3 client with access keys. Key: {access_key_masked}, Token length: {session_token_len}")
+                
+                # Clean up credentials - remove any whitespace
+                access_key = access_key.strip()
+                secret_key = secret_key.strip()
+                if session_token:
+                    session_token = session_token.strip()
+                
+                # Create boto3 session with explicit credentials
+                try:
+                    if session_token:
+                        session = boto3.Session(
+                            aws_access_key_id=access_key,
+                            aws_secret_access_key=secret_key,
+                            aws_session_token=session_token,
+                            region_name=region if region else None
+                        )
+                    else:
+                        session = boto3.Session(
+                            aws_access_key_id=access_key,
+                            aws_secret_access_key=secret_key,
+                            region_name=region if region else None
+                        )
+                    s3 = session.client('s3')
+                except Exception as e:
+                    logger.error(f"Error creating boto3 session: {e}")
+                    raise
+            else:
+                logger.error("AWS access keys not provided in config")
+                raise ValueError("AWS access keys are required for S3 access")
         else:
-            s3 = boto3.client('s3')
+            logger.error("No AWS configuration section found in config")
+            raise ValueError("AWS configuration is required for S3 access")
         
         if prefix and not prefix.endswith('/'):
             prefix += '/'
@@ -387,12 +551,29 @@ def list_s3_files_by_date_range(s3_uri, start_date, end_date):
             
         return selected_files, selected_dates
             
+    except botocore.exceptions.ClientError as e:
+        error_code = e.response['Error']['Code']
+        error_message = e.response['Error']['Message']
+        logger.error(f"AWS S3 error: {error_code} - {error_message}")
+        
+        # Special handling for common S3 errors
+        if error_code == 'InvalidAccessKeyId':
+            logger.error("Invalid AWS access key provided in config.ini")
+        elif error_code == 'SignatureDoesNotMatch':
+            logger.error("Invalid AWS secret key provided in config.ini")
+        elif error_code == 'ExpiredToken':
+            logger.error("AWS session token has expired. Please obtain a new token.")
+        elif error_code == 'AccessDenied':
+            logger.error("Access denied to S3 bucket. Check your permissions.")
+            
+        return [], []
     except Exception as e:
-        logger.error(f"Error finding files in S3 bucket: {e}")
+        logger.error(f"Error finding files in S3 bucket: {str(e)}")
+        logger.error(f"Check your AWS credentials and S3 bucket configuration in config.ini")
         return [], []
 
 
-def get_files_for_date_range(data_dir, start_date, end_date):
+def get_files_for_date_range(data_dir, start_date, end_date, config=None):
     """
     Get AIS data files for a specific date range based on their filenames.
     Supports both .csv and .parquet files with filenames in YYYY-MM-DD format.
@@ -401,13 +582,14 @@ def get_files_for_date_range(data_dir, start_date, end_date):
         data_dir (str): Directory containing the AIS data files
         start_date (date): Start date for file selection
         end_date (date): End date for file selection
+        config (dict, optional): Configuration dictionary containing AWS credentials
         
     Returns:
         tuple: (selected_files, selected_dates)
     """
     try:
         if is_s3_uri(data_dir):
-            return list_s3_files_by_date_range(data_dir, start_date, end_date)
+            return list_s3_files_by_date_range(data_dir, start_date, end_date, config)
             
         # Check if directory exists
         if not os.path.exists(data_dir) or not os.path.isdir(data_dir):
@@ -487,7 +669,7 @@ def load_config(config_file='config.ini'):
             'USE_DASK': True,
             'USE_GPU': GPU_AVAILABLE,  # Use GPU if available
             'DATA_DIRECTORY': 'data',
-            'OUTPUT_DIRECTORY': 'C:\\AIS Data\\Shipping Fraud Detection Results',  # Default output directory
+            'OUTPUT_DIRECTORY': 'C:\\AIS_Data\\Reports',  # Proper Windows path with double backslashes
             'SELECTED_SHIP_TYPES': [20, 21, 22, 23, 24, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 69, 70, 71, 72, 73, 74, 79, 80, 81, 82, 83, 84, 89, 90, 91, 92, 93, 94],  # All vessel types
             'USE_S3': False,
             'S3_DATA_URI': '',
@@ -563,6 +745,17 @@ def load_config(config_file='config.ini'):
             # Date range settings
             'start_date': get_config_value('DEFAULT', 'start_date', fallback=None),
             'end_date': get_config_value('DEFAULT', 'end_date', fallback=None),
+            
+            # Add AWS section with all credentials
+            'AWS': {
+                's3_access_key': get_config_value('AWS', 's3_access_key', fallback=''),
+                's3_secret_key': get_config_value('AWS', 's3_secret_key', fallback=''),
+                's3_session_token': get_config_value('AWS', 's3_session_token', fallback=''),
+                's3_auth_method': get_config_value('AWS', 's3_auth_method', fallback='keys'),
+                's3_region': get_config_value('AWS', 's3_region', fallback='us-east-1'),
+                's3_bucket_name': get_config_value('AWS', 's3_bucket_name', fallback=''),
+                's3_prefix': get_config_value('AWS', 's3_prefix', fallback=''),
+            },
             
             # OUTPUT_CONTROLS settings
             'generate_anomaly_summary': get_config_value('OUTPUT_CONTROLS', 'generate_anomaly_summary', fallback=True, value_type='boolean'),
@@ -644,7 +837,7 @@ def load_config(config_file='config.ini'):
             'USE_DASK': True,
             'USE_GPU': GPU_AVAILABLE,
             'DATA_DIRECTORY': 'data',
-            'OUTPUT_DIRECTORY': 'C:\\AIS Data\\Shipping Fraud Detection Results',  # Default output directory
+            'OUTPUT_DIRECTORY': 'C:\\AIS_Data\\Reports',  # Proper Windows path format
             'SELECTED_SHIP_TYPES': [70, 80],
             'USE_S3': False,
             'S3_DATA_URI': '',
@@ -2390,12 +2583,37 @@ def detect_shipping_anomalies_by_date_range(start_date, end_date, config_input='
         return pd.DataFrame()
     
     if config.get('USE_S3', False):
-        data_dir = config[data_dir_key]
+        data_dir = config.get('S3_DATA_URI', '')
+        
+        # Validate S3 data URI
+        if not data_dir or not is_s3_uri(data_dir):
+            logger.error(f"Invalid S3 data URI: {data_dir}")
+            # Fall back to local data directory
+            if 'DATA_DIRECTORY' in config:
+                logger.warning("Falling back to local data directory")
+                data_dir = config['DATA_DIRECTORY']
+                config['USE_S3'] = False
+            else:
+                logger.error("No valid data directory found in config")
+                return pd.DataFrame()
+        else:
+            # Test if AWS credentials work properly
+            logger.info(f"Using S3 data from: {data_dir}")
+            if not test_aws_credentials(config):
+                logger.error("AWS credentials failed validation")
+                # Offer to try local mode instead
+                if 'DATA_DIRECTORY' in config and config['DATA_DIRECTORY']:
+                    logger.warning("Falling back to local data directory due to S3 credential failure")
+                    data_dir = config['DATA_DIRECTORY']
+                    config['USE_S3'] = False
+                else:
+                    logger.error("No valid local data directory found as fallback")
+                    return pd.DataFrame()
     else:
         data_dir = config[data_dir_key]
     
     # Find files for the date range
-    file_paths, dates_in_order = get_files_for_date_range(data_dir, start_date, end_date)
+    file_paths, dates_in_order = get_files_for_date_range(data_dir, start_date, end_date, config)
     
     if not file_paths:
         logger.error("No valid files found for the specified date range.")
@@ -2406,6 +2624,132 @@ def detect_shipping_anomalies_by_date_range(start_date, end_date, config_input='
 
 # Note: detect_shipping_anomalies function has been removed, as we now only support explicit date ranges
 # See detect_shipping_anomalies_by_date_range for the current implementation
+
+
+def test_aws_credentials(config):
+    """
+    Test if the AWS credentials in config are valid by making a simple API call
+    
+    Args:
+        config (dict): Configuration dictionary with AWS credentials
+        
+    Returns:
+        bool: True if credentials are valid, False otherwise
+    """
+    try:
+        if not config or 'AWS' not in config:
+            logger.error("No AWS configuration found in config")
+            return False
+        
+        # Get credentials
+        access_key = config['AWS'].get('s3_access_key', '').strip()
+        secret_key = config['AWS'].get('s3_secret_key', '').strip()
+        session_token = config['AWS'].get('s3_session_token', '').strip()
+        region = config['AWS'].get('s3_region', '')
+        
+        if not access_key or not secret_key:
+            logger.error("AWS access key or secret key is missing")
+            return False
+            
+        # Try to create a session and make a simple API call
+        try:
+            if session_token:
+                session = boto3.Session(
+                    aws_access_key_id=access_key,
+                    aws_secret_access_key=secret_key,
+                    aws_session_token=session_token,
+                    region_name=region if region else None
+                )
+            else:
+                session = boto3.Session(
+                    aws_access_key_id=access_key,
+                    aws_secret_access_key=secret_key,
+                    region_name=region if region else None
+                )
+                
+            # Test if credentials work by listing S3 buckets
+            s3 = session.client('s3')
+            s3.list_buckets()
+            return True
+        except Exception as e:
+            logger.error(f"AWS credential test failed: {e}")
+            return False
+    except Exception as e:
+        logger.error(f"Error testing AWS credentials: {e}")
+        return False
+
+def check_aws_configuration(config):
+    """
+    Validate AWS configuration and log details about the S3 setup
+    
+    Args:
+        config (dict): Configuration dictionary
+    """
+    if not config.get('USE_S3', False):
+        logger.info("S3 access is not enabled in config.ini")
+        return
+    
+    # Test if credentials actually work
+    credentials_valid = test_aws_credentials(config)
+    if credentials_valid:
+        logger.info("AWS credentials verified successfully!")
+    else:
+        logger.warning("AWS credentials verification FAILED - S3 access may not work correctly")
+
+    
+    logger.info("AWS S3 configuration:")
+    s3_data_uri = config.get('S3_DATA_URI', '')
+    
+    if not s3_data_uri:
+        logger.warning("USE_S3 is enabled but S3_DATA_URI is not set in config.ini")
+    else:
+        logger.info(f"  S3 Data URI: {s3_data_uri}")
+    
+    # Using keys authentication method
+    logger.info("  Authentication method: keys")
+    
+    # Log credential presence (not the actual values)
+    aws_config = config.get('AWS', {})
+    access_key = aws_config.get('s3_access_key')
+    secret_key = aws_config.get('s3_secret_key')
+    session_token = aws_config.get('s3_session_token')
+    region = aws_config.get('s3_region', 'us-east-1')
+    
+    has_access_key = bool(access_key)
+    has_secret_key = bool(secret_key)
+    has_token = bool(session_token)
+    
+    # Set AWS credentials as environment variables if found in config
+    if has_access_key and has_secret_key:
+        logger.info("  AWS access key and secret key are set")
+        os.environ['AWS_ACCESS_KEY_ID'] = access_key
+        os.environ['AWS_SECRET_ACCESS_KEY'] = secret_key
+        
+        if has_token:
+            logger.info("  AWS session token is set")
+            os.environ['AWS_SESSION_TOKEN'] = session_token
+        else:
+            logger.info("  AWS session token is not set (not required for permanent credentials)")
+            
+        # Set region if available
+        if region:
+            os.environ['AWS_DEFAULT_REGION'] = region
+            logger.info(f"  AWS region set to: {region}")
+    else:
+        logger.warning("  AWS access key and/or secret key not set in config.ini")
+    
+    # Check for environment variables
+    aws_env_vars = [
+        'AWS_ACCESS_KEY_ID',
+        'AWS_SECRET_ACCESS_KEY',
+        'AWS_SESSION_TOKEN',
+        'AWS_PROFILE',
+        'AWS_DEFAULT_REGION'
+    ]
+    
+    env_vars_present = [var for var in aws_env_vars if var in os.environ]
+    if env_vars_present:
+        logger.info(f"  AWS environment variables found: {', '.join(env_vars_present)}")
 
 
 def main():
@@ -2435,12 +2779,10 @@ def main():
     parser.add_argument('--max-anomalies-per-vessel', type=int, help='Maximum anomalies to report per vessel')
     parser.add_argument('--mmsi-list', type=str, help='Comma-separated list of MMSIs to filter')
     
-    # AWS authentication options
-    parser.add_argument('--profile', type=str, help='AWS profile name to use for S3 access')
+    # AWS authentication options (keys method only)
     parser.add_argument('--access-key', type=str, help='AWS access key ID for S3 access')
     parser.add_argument('--secret-key', type=str, help='AWS secret access key for S3 access')
     parser.add_argument('--region', type=str, help='AWS region name', default='us-east-1')
-    parser.add_argument('--role-arn', type=str, help='AWS IAM role ARN to assume for S3 access')
     parser.add_argument('--session-token', type=str, help='AWS session token for temporary credentials')
     parser.add_argument('--bucket', type=str, help='S3 bucket name')
     parser.add_argument('--prefix', type=str, help='S3 object prefix (path)')
@@ -2455,6 +2797,9 @@ def main():
     try:
         # Load configuration
         config = load_config(args.config)
+        
+        # Check AWS configuration for S3 access
+        check_aws_configuration(config)
         
         # Apply warning suppression based on config and command-line args
         # Command-line --show-warnings overrides config setting
@@ -2559,13 +2904,7 @@ def main():
             except Exception as e:
                 logger.warning(f"Error parsing MMSI list: {e}. Format should be comma-separated integers.")
         
-        # Set up AWS authentication if specified
-        if args.profile:
-            logger.info(f"Using AWS profile: {args.profile}")
-            import boto3
-            boto3.setup_default_session(profile_name=args.profile)
-            
-        # Set AWS credentials if provided
+        # Set AWS credentials if provided via command line
         if args.access_key and args.secret_key:
             logger.info(f"Using provided AWS access keys")
             os.environ['AWS_ACCESS_KEY_ID'] = args.access_key
@@ -2578,25 +2917,7 @@ def main():
             logger.info("Using provided AWS session token")
             os.environ['AWS_SESSION_TOKEN'] = args.session_token
                 
-        # Set up role assumption if specified
-        if args.role_arn:
-            try:
-                logger.info(f"Assuming IAM role: {args.role_arn}")
-                import boto3
-                sts_client = boto3.client('sts', region_name=args.region)
-                assumed_role = sts_client.assume_role(
-                    RoleArn=args.role_arn,
-                    RoleSessionName="FraudDetectionSession"
-                )
-                credentials = assumed_role['Credentials']
-                
-                os.environ['AWS_ACCESS_KEY_ID'] = credentials['AccessKeyId']
-                os.environ['AWS_SECRET_ACCESS_KEY'] = credentials['SecretAccessKey']
-                os.environ['AWS_SESSION_TOKEN'] = credentials['SessionToken']
-                if args.region:
-                    os.environ['AWS_DEFAULT_REGION'] = args.region
-            except Exception as e:
-                logger.error(f"Error assuming role: {e}")
+        # Using only key-based authentication
         
         # Set S3 URI if bucket was specified
         if args.bucket:
@@ -2648,10 +2969,10 @@ def main():
             return 0
         else:
             # User doesn't want to continue
-            # Return code 100 to signal SFD_GUI.py to close as well
-            return 100
+            # Exit with code 100 to signal SFD_GUI.py to close as well
+            sys.exit(100)
             
-        # This code is unreachable due to the return statement above
+        # This code is unreachable due to the sys.exit() call above
         # return 0 is left here as a comment for clarity
     
     except Exception as e:
@@ -2660,5 +2981,10 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    # Check dependencies first
+    if check_dependencies():
+        sys.exit(main())
+    else:
+        print("\nPlease install the missing dependencies before running this script.")
+        sys.exit(1)
 

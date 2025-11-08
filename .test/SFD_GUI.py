@@ -24,6 +24,159 @@ import re
 import glob
 import traceback
 import threading
+import importlib
+import importlib.metadata  # Modern replacement for pkg_resources
+
+
+def check_dependencies():
+    """
+    Check if all required dependencies are installed.
+    If not, offer to install them from requirements.txt.
+    
+    Returns:
+        bool: True if all dependencies are satisfied, False otherwise
+    """
+    logger = logging.getLogger("SDF_GUI")
+    logger.info("Checking dependencies...")
+    
+    # Find the requirements.txt file (look in script directory first)
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    req_file = os.path.join(script_dir, "requirements.txt")
+    
+    # If not found in script directory, check current working directory
+    if not os.path.exists(req_file):
+        req_file = os.path.join(os.getcwd(), "requirements.txt")
+        if not os.path.exists(req_file):
+            logger.warning("requirements.txt not found in script directory or current working directory")
+            return True  # Continue without checking
+    
+    try:
+        # Parse requirements file
+        requirements = []
+        with open(req_file, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith('#') and not line.startswith('-e'):
+                    # Strip off version specifiers
+                    if ';' in line:
+                        # Handle platform-specific requirements
+                        req, condition = line.split(';', 1)
+                        req = req.strip()
+                        condition = condition.strip()
+                        
+                        # Check if this requirement applies to current platform
+                        if 'platform_system==' in condition:
+                            platform_name = condition.split('==')[1].strip().strip("'").strip('"')
+                            if platform.system() != platform_name:
+                                continue  # Skip this requirement if platform doesn't match
+                    else:
+                        req = line
+                    
+                    if '>=' in req:
+                        req = req.split('>=')[0]
+                    elif '==' in req:
+                        req = req.split('==')[0]
+                    elif '<=' in req:
+                        req = req.split('<=')[0]
+                    
+                    req = req.strip()
+                    if req:
+                        requirements.append(req)
+        
+        # Check installed packages
+        missing = []
+        for req in requirements:
+            try:
+                importlib.import_module(req.lower().replace('-', '_'))
+            except ImportError:
+                try:
+                    # Double-check with importlib.metadata as some package names don't match import names
+                    importlib.metadata.version(req)
+                except importlib.metadata.PackageNotFoundError:
+                    missing.append(req)
+        
+        if missing:
+            logger.warning(f"Missing dependencies: {', '.join(missing)}")
+            
+            # Show dialog in GUI context
+            result = messagebox.askyesno(
+                "Missing Dependencies",
+                f"The following dependencies are missing: {', '.join(missing)}\n\nWould you like to install them now?"
+            )
+            
+            if result:
+                logger.info("Installing missing dependencies...")
+                try:
+                    # Create a progress dialog
+                    progress_window = tk.Toplevel()
+                    progress_window.title("Installing Dependencies")
+                    progress_window.geometry("400x150")
+                    progress_window.transient()
+                    progress_window.grab_set()
+                    
+                    # Add progress label
+                    label = ttk.Label(progress_window, text=f"Installing dependencies: {', '.join(missing)}")
+                    label.pack(pady=10)
+                    
+                    # Add progress bar
+                    progress = ttk.Progressbar(progress_window, mode="indeterminate")
+                    progress.pack(fill="x", padx=20, pady=10)
+                    progress.start()
+                    
+                    # Update function to keep GUI responsive
+                    def update_gui():
+                        progress_window.update()
+                        progress_window.after(100, update_gui)
+                    
+                    progress_window.after(100, update_gui)
+                    
+                    # Run pip install
+                    result = subprocess.run(
+                        [sys.executable, "-m", "pip", "install", "-r", req_file],
+                        capture_output=True,
+                        text=True
+                    )
+                    
+                    # Stop progress
+                    progress.stop()
+                    progress_window.destroy()
+                    
+                    if result.returncode == 0:
+                        messagebox.showinfo(
+                            "Installation Complete", 
+                            "Dependencies installed successfully!"
+                        )
+                        logger.info("Dependencies installed successfully!")
+                        return True
+                    else:
+                        logger.error(f"Failed to install dependencies: {result.stderr}")
+                        messagebox.showerror(
+                            "Installation Failed",
+                            f"Failed to install dependencies. Please install them manually:\n\n{result.stderr[:500]}..."
+                        )
+                        return False
+                except Exception as e:
+                    logger.error(f"Error installing dependencies: {e}")
+                    messagebox.showerror(
+                        "Installation Error",
+                        f"Error installing dependencies: {str(e)}"
+                    )
+                    return False
+            else:
+                logger.warning("User chose not to install missing dependencies")
+                messagebox.showwarning(
+                    "Missing Dependencies",
+                    "Some features may not work without the required dependencies.\nYou can install them manually with:\n\n"
+                    f"pip install {' '.join(missing)}"
+                )
+                return False
+        
+        logger.info("All dependencies are satisfied.")
+        return True
+    
+    except Exception as e:
+        logger.error(f"Error checking dependencies: {e}")
+        return True  # Continue anyway
 
 # Import PIL for image processing
 try:
@@ -235,7 +388,7 @@ class SDFGUI:
     def __init__(self, root):
         self.root = root
         self.root.title("AIS Shipping Fraud Detection System")
-        self.root.geometry("1330x800")
+        self.root.geometry("1680x840")
         
         # Try to load the banner image
         try:
@@ -293,7 +446,7 @@ class SDFGUI:
         
         # Initialize variables
         self.data_directory = tk.StringVar()
-        self.output_directory = tk.StringVar(value="C:\\AIS Data\\Shipping Fraud Detection Results")
+        self.output_directory = tk.StringVar(value="C:\\AIS_Data\\Reports")
         
         # Date range variables
         self.start_date = tk.StringVar(value="2024-10-15")  # Default to Oct 15, 2024
@@ -359,13 +512,13 @@ class SDFGUI:
         # S3 variables
         self.use_s3 = tk.BooleanVar(value=False)
         self.s3_data_uri = tk.StringVar(value="s3://ai-dsde-txg-datathon2025/teams/dreadnought/parquet/")
-        self.s3_auth_method = tk.StringVar(value="default") # values: default, profile, keys, role
-        self.s3_profile_name = tk.StringVar(value="dreadnought")
+        self.s3_auth_method = tk.StringVar(value="keys") # only keys authentication is supported
         self.s3_access_key = tk.StringVar()
         self.s3_secret_key = tk.StringVar()
         self.s3_session_token = tk.StringVar()
         self.s3_region = tk.StringVar(value="us-east-1")
-        self.s3_role_arn = tk.StringVar()
+        self.s3_profile_name = tk.StringVar() # Kept for backward compatibility
+        self.s3_role_arn = tk.StringVar() # Kept for backward compatibility
         self.s3_bucket_name = tk.StringVar()
         self.s3_prefix = tk.StringVar()
         self.s3_local_dir = tk.StringVar()
@@ -940,11 +1093,24 @@ Select the time period on this tab and press the Run Analysis button to execute 
         self.s3_bucket_name.trace_add("write", update_s3_uri)
         self.s3_prefix.trace_add("write", update_s3_uri)
         
+        # Add callback for credential changes (auto-saving removed)
+        def save_aws_changes(*args):
+            # This function previously auto-saved the config on each change
+            # Now we just update the UI as needed but don't save to config.ini
+            pass
+        
+        # Register callbacks for credential changes to save config
+        self.s3_access_key.trace_add("write", save_aws_changes)
+        self.s3_secret_key.trace_add("write", save_aws_changes)
+        self.s3_session_token.trace_add("write", save_aws_changes)
+        self.s3_region.trace_add("write", save_aws_changes)
+        self.s3_auth_method.trace_add("write", save_aws_changes)
+        
         # Initial update
         update_s3_uri()
         
-        # Default Authentication Method (Access Key)
-        ttk.Label(s3_frame, text="AWS Authentication Details:").pack(anchor=tk.W, padx=5, pady=5)
+        # AWS Authentication using Access Keys
+        ttk.Label(s3_frame, text="AWS Authentication Details (Access Keys):").pack(anchor=tk.W, padx=5, pady=5)
         
         auth_keys_frame = ttk.Frame(s3_frame)
         auth_keys_frame.pack(fill=tk.X, padx=15, pady=5)
@@ -969,54 +1135,29 @@ Select the time period on this tab and press the Run Analysis button to execute 
         self.secret_key_entry = ttk.Entry(secret_key_row, textvariable=self.s3_secret_key, width=40, show="*")
         self.secret_key_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
         
-        # Session Token
+        # Session Token - Expanded width to handle very long tokens
         ttk.Label(token_row, text="Session Token:", width=12).pack(side=tk.LEFT, padx=5)
-        self.token_entry = ttk.Entry(token_row, textvariable=self.s3_session_token, width=40)
+        self.token_entry = ttk.Entry(token_row, textvariable=self.s3_session_token, width=60)
         self.token_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
         
-        # Alternative Authentication Methods
-        ttk.Label(s3_frame, text="Use only if other AWS Access method fails:", font=(None, 10, "bold")).pack(
-            anchor=tk.W, padx=5, pady=(15,5))
-            
-        # Toggle for advanced auth methods
+        # Advanced Authentication Options
+        # Toggle for advanced auth options (region)
         self.show_advanced_auth = tk.BooleanVar(value=False)
-        ttk.Checkbutton(s3_frame, text="Show alternative authentication methods", 
+        ttk.Checkbutton(s3_frame, text="Show advanced authentication options", 
                       variable=self.show_advanced_auth, command=self.toggle_advanced_auth).pack(
-            anchor=tk.W, padx=5, pady=5)
+            anchor=tk.W, padx=5, pady=(15,5))
             
         # Advanced Authentication frame
         self.advanced_auth_frame = ttk.Frame(s3_frame)
         # Don't pack it initially - will be managed by toggle_advanced_auth
         
         # Create frames for each row in advanced auth frame
-        auth_method_row = ttk.Frame(self.advanced_auth_frame)
-        auth_method_row.pack(fill=tk.X, pady=3)
-        
-        profile_row = ttk.Frame(self.advanced_auth_frame)
-        profile_row.pack(fill=tk.X, pady=3)
-        
-        role_row = ttk.Frame(self.advanced_auth_frame)
-        role_row.pack(fill=tk.X, pady=3)
+        # Keys are the only auth method, so we don't need auth method selection UI
         
         region_row = ttk.Frame(self.advanced_auth_frame)
         region_row.pack(fill=tk.X, pady=3)
         
-        # Authentication method selection
-        ttk.Label(auth_method_row, text="Auth Method:", width=12).pack(side=tk.LEFT, padx=5)
-        self.auth_method_combo = ttk.Combobox(auth_method_row, textvariable=self.s3_auth_method, width=20, state="readonly")
-        self.auth_method_combo['values'] = ("default", "profile", "role")
-        self.auth_method_combo.pack(side=tk.LEFT, padx=5)
-        self.auth_method_combo.bind("<<ComboboxSelected>>", self.toggle_auth_method)
-        
-        # Profile settings
-        ttk.Label(profile_row, text="Profile Name:", width=12).pack(side=tk.LEFT, padx=5)
-        self.profile_entry = ttk.Entry(profile_row, textvariable=self.s3_profile_name, width=20)
-        self.profile_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
-        
-        # Role ARN settings
-        ttk.Label(role_row, text="Role ARN:", width=12).pack(side=tk.LEFT, padx=5)
-        self.role_arn_entry = ttk.Entry(role_row, textvariable=self.s3_role_arn, width=50)
-        self.role_arn_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
+        # Keys are the only supported authentication method
         
         # Region settings
         ttk.Label(region_row, text="AWS Region:", width=12).pack(side=tk.LEFT, padx=5)
@@ -1043,12 +1184,27 @@ Select the time period on this tab and press the Run Analysis button to execute 
                         variable=self.use_dask).pack(anchor=tk.W, padx=15)
         
         # GPU option
-        gpu_option = ttk.Frame(processing_frame)
-        gpu_option.pack(fill=tk.X, pady=5)
+        self.gpu_option_frame = ttk.Frame(processing_frame)
+        self.gpu_option_frame.pack(fill=tk.X, pady=5)
         
         self.use_gpu = tk.BooleanVar(value=True)  # Default to True, will be disabled if not available
-        ttk.Checkbutton(gpu_option, text="Use GPU acceleration if available", 
-                        variable=self.use_gpu).pack(anchor=tk.W, padx=15)
+        ttk.Checkbutton(self.gpu_option_frame, text="Use GPU acceleration if available", 
+                        variable=self.use_gpu, command=self.check_gpu_support).pack(anchor=tk.W, padx=15)
+        
+        # Add an install button for GPU support
+        self.gpu_status_label = ttk.Label(self.gpu_option_frame, text="GPU status: Checking...")
+        self.gpu_status_label.pack(anchor=tk.W, padx=15, pady=2)
+        
+        self.install_gpu_button = ttk.Button(self.gpu_option_frame, text="Install GPU Support", command=self.install_gpu_packages)
+        # Initially hide the button until we check GPU status
+        # self.install_gpu_button.pack(anchor=tk.W, padx=15, pady=2)
+        
+        # Add note label placeholder
+        self.gpu_note_label = ttk.Label(self.gpu_option_frame, 
+                                     text="Note: GPU acceleration is optional. The application will run without it.")
+        
+        # Check GPU status on startup
+        self.root.after(1000, self.check_gpu_support)
         
         # Initialize the auth method settings
         self.toggle_auth_method()
@@ -1119,6 +1275,170 @@ Select the time period on this tab and press the Run Analysis button to execute 
         if directory:
             self.output_directory.set(directory)
     
+    def check_gpu_support(self):
+        """Check if GPU support packages are available"""
+        gpu_available = False
+        missing_packages = []
+        
+        # Check for each GPU package
+        for package in ["cudf", "cupy", "cuml"]:
+            try:
+                importlib.import_module(package)
+            except ImportError:
+                missing_packages.append(package)
+        
+        # Update the use_gpu checkbox state based on what's installed
+        # This doesn't change the user's preference, just informs them of capability
+        
+        if not missing_packages:
+            self.gpu_status_label.config(text="GPU status: Support available - acceleration enabled")
+            if hasattr(self, 'install_gpu_button') and self.install_gpu_button.winfo_ismapped():
+                self.install_gpu_button.pack_forget()
+            gpu_available = True
+        else:
+            # Check if conda is available
+            conda_available = self.is_conda_available()
+            if conda_available:
+                self.gpu_status_label.config(text=f"GPU status: Optional acceleration not available (Conda available)")
+            else:
+                self.gpu_status_label.config(text=f"GPU status: Optional acceleration not available (using pip)")
+                
+            # Show the install button if packages are missing
+            if hasattr(self, 'install_gpu_button') and not self.install_gpu_button.winfo_ismapped():
+                self.install_gpu_button.pack(anchor=tk.W, padx=15, pady=2)
+                
+            # Add note about GPU being optional
+            if not hasattr(self, 'gpu_note_label') or not self.gpu_note_label.winfo_ismapped():
+                self.gpu_note_label = ttk.Label(self.gpu_option_frame, 
+                                              text="Note: GPU acceleration is optional. The application will run without it.")
+                self.gpu_note_label.pack(anchor=tk.W, padx=15, pady=(0, 5))
+        
+        return gpu_available
+        
+    def is_conda_available(self):
+        """Check if conda is available in PATH"""
+        try:
+            # Check if conda is in PATH
+            result = subprocess.run(['conda', '--version'], 
+                                  capture_output=True, text=True, check=False)
+            return result.returncode == 0
+        except:
+            return False
+    
+    def install_gpu_packages(self):
+        """Install GPU support packages"""
+        try:
+            # Create progress window
+            progress_window = tk.Toplevel(self.root)
+            progress_window.title("Installing GPU Support")
+            progress_window.geometry("400x200")
+            progress_window.transient(self.root)
+            progress_window.grab_set()
+            
+            # Add status label
+            status_label = ttk.Label(progress_window, text="Installing GPU support packages...")
+            status_label.pack(pady=10)
+            
+            # Add progress bar
+            progress = ttk.Progressbar(progress_window, mode="indeterminate")
+            progress.pack(fill="x", padx=20, pady=10)
+            progress.start()
+            
+            # Add log text area
+            log_text = scrolledtext.ScrolledText(progress_window, height=5)
+            log_text.pack(fill="both", expand=True, padx=20, pady=10)
+            
+            def update_log(message):
+                log_text.insert(tk.END, message + "\n")
+                log_text.see(tk.END)
+                log_text.update()
+            
+            # Define installation function to run in thread
+            def run_installation():
+                installation_success = False
+                conda_available = self.is_conda_available()
+                
+                # Try conda installation first if available
+                if conda_available:
+                    update_log("Conda detected - attempting to install RAPIDS using conda...")
+                    try:
+                        # Try to install RAPIDS using conda
+                        cmd = ["conda", "install", "-y", "-c", "rapidsai", "-c", "conda-forge", "-c", "nvidia", 
+                               "cudf", "cuml", "cupy"]
+                        process = subprocess.run(cmd, capture_output=True, text=True)
+                        
+                        if process.returncode == 0:
+                            installation_success = True
+                            update_log("Successfully installed RAPIDS using conda!")
+                        else:
+                            update_log(f"Failed to install with conda: {process.stderr}")
+                            update_log("Falling back to pip installation...")
+                    except Exception as e:
+                        update_log(f"Error during conda installation: {str(e)}")
+                        update_log("Falling back to pip installation...")
+                else:
+                    update_log("Conda not found - using pip for installation")
+                
+                # Fall back to pip with lower version requirements if conda failed or is not available
+                if not installation_success:
+                    update_log("Attempting to install RAPIDS using pip with lower version requirements...")
+                    
+                    # Packages to install with lower version requirements
+                    gpu_packages = ["cudf<1.0", "cupy<8.0", "cuml<1.0"]
+                    pip_success = True
+                    
+                    for package in gpu_packages:
+                        update_log(f"Installing {package}...")
+                        try:
+                            # Use pip to install the package
+                            process = subprocess.run(
+                                [sys.executable, "-m", "pip", "install", package],
+                                capture_output=True,
+                                text=True
+                            )
+                            
+                            if process.returncode != 0:
+                                pip_success = False
+                                update_log(f"Failed to install {package}: {process.stderr}")
+                            else:
+                                update_log(f"{package} installed successfully.")
+                        except Exception as e:
+                            pip_success = False
+                            update_log(f"Error installing {package}: {str(e)}")
+                    
+                    installation_success = pip_success
+                
+                # Complete installation
+                if installation_success:
+                    update_log("\nAll GPU packages installed successfully!")
+                else:
+                    update_log("\nSome packages could not be installed. Check output for details.")
+                
+                # Update UI back on the main thread
+                self.root.after(100, lambda: self._complete_installation(progress_window, installation_success))
+            
+            # Start installation in a separate thread
+            threading.Thread(target=run_installation, daemon=True).start()
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to install GPU packages: {str(e)}")
+    
+    def _complete_installation(self, progress_window, success):
+        """Complete the GPU package installation process"""
+        # Close the progress window
+        progress_window.destroy()
+        
+        # Show completion message
+        if success:
+            messagebox.showinfo("Success", "GPU support packages installed successfully! GPU acceleration is now enabled.")
+        else:
+            messagebox.showwarning("Warning", 
+                "Some GPU packages could not be installed. The application will still run without GPU acceleration.\n\n"
+                "You can continue using the application with CPU-only processing.")
+        
+        # Check GPU support status again
+        self.check_gpu_support()
+    
     def toggle_data_source(self):
         """Toggle between local data folder and AWS S3 data bucket"""
         if not aws_available and self.data_source.get() == "s3":
@@ -1155,9 +1475,7 @@ Select the time period on this tab and press the Run Analysis button to execute 
                 self.s3_uri_entry.configure(state="disabled")
             if hasattr(self, 'test_s3_button'):
                 self.test_s3_button.configure(state="disabled")
-            if hasattr(self, 'auth_method_frame'):
-                for widget in self.auth_method_frame.winfo_children():
-                    widget.configure(state="disabled")
+            # Keys authentication is the only method supported
             return
             
         if self.use_s3.get():
@@ -1166,13 +1484,18 @@ Select the time period on this tab and press the Run Analysis button to execute 
                 self.s3_uri_entry.configure(state="normal")
             if hasattr(self, 'test_s3_button'):
                 self.test_s3_button.configure(state="normal")
-            # Enable authentication method selection
-            if hasattr(self, 'auth_method_combo'):
-                self.auth_method_combo.configure(state="readonly")
+            # Keys authentication is the only method supported
             # Update authentication settings based on selected method
             self.toggle_auth_method()
             # Toggle advanced authentication if needed
             self.toggle_advanced_auth()
+            
+            # Set data source to S3 if available
+            if hasattr(self, 'data_source'):
+                self.data_source.set("s3")
+                
+            # Configuration will be saved when 'Save Configuration' or 'Run Analysis' is clicked
+                
         else:
             # Disable S3 settings
             if hasattr(self, 's3_uri_entry'):
@@ -1180,10 +1503,6 @@ Select the time period on this tab and press the Run Analysis button to execute 
             if hasattr(self, 'test_s3_button'):
                 self.test_s3_button.configure(state="disabled")
             # Disable all authentication settings
-            if hasattr(self, 'auth_method_combo'):
-                self.auth_method_combo.configure(state="disabled")
-            if hasattr(self, 'profile_entry'):
-                self.profile_entry.configure(state="disabled")
             if hasattr(self, 'access_key_entry'):
                 self.access_key_entry.configure(state="disabled")
                 self.secret_key_entry.configure(state="disabled")
@@ -1194,8 +1513,13 @@ Select the time period on this tab and press the Run Analysis button to execute 
                 self.prefix_entry.configure(state="disabled")
             if hasattr(self, 'region_entry'):
                 self.region_entry.configure(state="disabled")
-            if hasattr(self, 'role_arn_entry'):
-                self.role_arn_entry.configure(state="disabled")
+            # Only keys authentication is supported
+                
+            # Set data source to local
+            if hasattr(self, 'data_source'):
+                self.data_source.set("local")
+                
+            # Configuration will be saved when 'Save Configuration' or 'Run Analysis' is clicked
                 
     def toggle_advanced_auth(self):
         """Show or hide advanced authentication options"""
@@ -1203,22 +1527,15 @@ Select the time period on this tab and press the Run Analysis button to execute 
             return
             
         if self.show_advanced_auth.get():
-            # Show advanced authentication frame
-            # Use a reasonable default row if s3_frame_row is not defined
-            if hasattr(self, 's3_frame_row'):
-                grid_row = self.s3_frame_row + 5
-            else:
-                grid_row = 5
-                
-            self.advanced_auth_frame.grid(row=grid_row, column=0, columnspan=3, 
-                                        sticky=tk.W+tk.E, padx=5, pady=5)
+            # Show advanced authentication frame using pack instead of grid
+            self.advanced_auth_frame.pack(fill=tk.X, padx=5, pady=5, after=self.show_advanced_auth.master)
             self.toggle_auth_method()
         else:
             # Hide advanced authentication frame
-            self.advanced_auth_frame.grid_forget()
+            self.advanced_auth_frame.pack_forget()
     
     def toggle_auth_method(self, *args):
-        """Enable/disable authentication settings based on selected auth method"""
+        """Enable/disable authentication settings based on selected auth method - only keys supported"""
         if not aws_available or not self.use_s3.get() or not hasattr(self, 'show_advanced_auth'):
             return
             
@@ -1226,26 +1543,26 @@ Select the time period on this tab and press the Run Analysis button to execute 
         if not self.show_advanced_auth.get():
             return
             
-        auth_method = self.s3_auth_method.get()
-        
-        # Disable all first
-        if hasattr(self, 'profile_entry'):
-            self.profile_entry.configure(state="disabled")
-        if hasattr(self, 'role_arn_entry'):
-            self.role_arn_entry.configure(state="disabled")
+        # Only keys auth method is supported now
+        # Just enable the region entry
         if hasattr(self, 'region_entry'):
-            self.region_entry.configure(state="disabled")
-        
-        # Enable based on selected method
-        if auth_method == "profile" and hasattr(self, 'profile_entry'):
-            self.profile_entry.configure(state="normal")
-            if hasattr(self, 'region_entry'):
-                self.region_entry.configure(state="normal")
-        elif auth_method == "role" and hasattr(self, 'role_arn_entry'):
-            self.role_arn_entry.configure(state="normal")
-            if hasattr(self, 'region_entry'):
-                self.region_entry.configure(state="normal")
+            self.region_entry.configure(state="normal")
             
+    def validate_session_token(self, session_token):
+        """Validate the format of a session token"""
+        # Basic checks for AWS session token format
+        # This doesn't verify the token is valid with AWS, just that it looks like a valid format
+        if not session_token:
+            return True  # Empty token is technically valid (means don't use a token)
+            
+        # Most AWS session tokens follow this pattern
+        if len(session_token) < 100:
+            return False  # Too short for a session token
+        
+        # Check for invalid characters
+        valid_chars = set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=\n")
+        return all(c in valid_chars for c in session_token)
+    
     def test_s3_connection(self):
         """Test the connection to the S3 bucket"""
         if not aws_available:
@@ -1263,69 +1580,43 @@ Select the time period on this tab and press the Run Analysis button to execute 
             bucket_name = parts[0]
             prefix = "/".join(parts[1:]) if len(parts) > 1 else ""
             
-            # Choose authentication method based on selection
-            auth_method = self.s3_auth_method.get()
+            # Only keys authentication is supported
+            access_key = self.s3_access_key.get()
+            secret_key = self.s3_secret_key.get()
+            session_token = self.s3_session_token.get()
+            region = self.s3_region.get()
             s3_client = None
             
-            if auth_method == "default":
-                messagebox.showinfo("Auth Method", "Using default AWS credential provider chain")
-                s3_client = boto3.client('s3')
+            if not access_key or not secret_key:
+                messagebox.showerror("Error", "Access key and secret key cannot be empty")
+                return
                 
-            elif auth_method == "profile":
-                profile_name = self.s3_profile_name.get()
-                if not profile_name:
-                    messagebox.showerror("Error", "Profile name cannot be empty")
-                    return
-                    
-                messagebox.showinfo("Auth Method", f"Using AWS profile: {profile_name}")
-                session = boto3.Session(profile_name=profile_name)
-                s3_client = session.client('s3', region_name=self.s3_region.get())
+            # Validate session token if provided
+            if session_token and not self.validate_session_token(session_token):
+                messagebox.showerror("Error", "Session token appears to be invalid. Please check the format.")
+                return
                 
-            elif auth_method == "keys":
-                access_key = self.s3_access_key.get()
-                secret_key = self.s3_secret_key.get()
-                session_token = self.s3_session_token.get()
-                region = self.s3_region.get()
-                
-                if not access_key or not secret_key:
-                    messagebox.showerror("Error", "Access key and secret key cannot be empty")
-                    return
-                    
-                if session_token:
-                    messagebox.showinfo("Auth Method", f"Using AWS access keys with session token in region {region}")
+            if session_token:
+                messagebox.showinfo("Auth Method", f"Using AWS access keys with session token in region {region}")
+                try:
                     s3_client = boto3.client('s3', 
                                            aws_access_key_id=access_key, 
                                            aws_secret_access_key=secret_key, 
                                            aws_session_token=session_token,
                                            region_name=region)
-                else:
-                    messagebox.showinfo("Auth Method", f"Using AWS access keys in region {region}")
+                except Exception as e:
+                    messagebox.showerror("Error", f"Failed to create S3 client with session token: {str(e)}\n\nYour session token may be invalid or expired.")
+                    return
+            else:
+                messagebox.showinfo("Auth Method", f"Using AWS access keys in region {region}")
+                try:
                     s3_client = boto3.client('s3', 
                                            aws_access_key_id=access_key, 
                                            aws_secret_access_key=secret_key, 
                                            region_name=region)
-                
-            elif auth_method == "role":
-                role_arn = self.s3_role_arn.get()
-                region = self.s3_region.get()
-                
-                if not role_arn:
-                    messagebox.showerror("Error", "Role ARN cannot be empty")
+                except Exception as e:
+                    messagebox.showerror("Error", f"Failed to create S3 client: {str(e)}")
                     return
-                    
-                messagebox.showinfo("Auth Method", f"Using IAM role: {role_arn}")
-                sts_client = boto3.client('sts', region_name=region)
-                assumed_role = sts_client.assume_role(
-                    RoleArn=role_arn,
-                    RoleSessionName="AISFraudDetectionSession"
-                )
-                credentials = assumed_role['Credentials']
-                
-                s3_client = boto3.client('s3',
-                                     aws_access_key_id=credentials['AccessKeyId'],
-                                     aws_secret_access_key=credentials['SecretAccessKey'],
-                                     aws_session_token=credentials['SessionToken'],
-                                     region_name=region)
             
             # Check if we got a valid S3 client
             if s3_client is None:
@@ -1468,6 +1759,39 @@ Select the time period on this tab and press the Run Analysis button to execute 
                                 pass  # Use default if value cannot be converted
                         else:  # StringVar or other
                             var.set(config['ANALYSIS_FILTERS'][filter_key])
+            
+            # Load AWS settings
+            if 'AWS' in config:
+                # Use getboolean for boolean values
+                if 'use_s3' in config['AWS']:
+                    try:
+                        self.use_s3.set(config['AWS'].getboolean('use_s3'))
+                    except ValueError:
+                        pass
+                        
+                # String values
+                if 's3_data_uri' in config['AWS']:
+                    self.s3_data_uri.set(config['AWS']['s3_data_uri'])
+                if 's3_auth_method' in config['AWS']:
+                    self.s3_auth_method.set(config['AWS']['s3_auth_method'])
+                if 's3_profile_name' in config['AWS']:
+                    self.s3_profile_name.set(config['AWS']['s3_profile_name'])
+                if 's3_access_key' in config['AWS']:
+                    self.s3_access_key.set(config['AWS']['s3_access_key'])
+                if 's3_secret_key' in config['AWS']:
+                    self.s3_secret_key.set(config['AWS']['s3_secret_key'])
+                if 's3_session_token' in config['AWS']:
+                    self.s3_session_token.set(config['AWS']['s3_session_token'])
+                if 's3_region' in config['AWS']:
+                    self.s3_region.set(config['AWS']['s3_region'])
+                if 's3_role_arn' in config['AWS']:
+                    self.s3_role_arn.set(config['AWS']['s3_role_arn'])
+                if 's3_bucket_name' in config['AWS']:
+                    self.s3_bucket_name.set(config['AWS']['s3_bucket_name'])
+                if 's3_prefix' in config['AWS']:
+                    self.s3_prefix.set(config['AWS']['s3_prefix'])
+                if 's3_local_dir' in config['AWS']:
+                    self.s3_local_dir.set(config['AWS']['s3_local_dir'])
         
         except Exception as e:
             logger.error(f"Error loading config: {e}")
@@ -1495,12 +1819,6 @@ Select the time period on this tab and press the Run Analysis button to execute 
             # Update with current values
             config['DEFAULT']['DATA_DIRECTORY'] = self.data_directory.get()
             config['DEFAULT']['OUTPUT_DIRECTORY'] = self.output_directory.get()
-            
-            # Also update the Paths section which SFD.py checks first
-            if 'Paths' not in config:
-                config['Paths'] = {}
-            config['Paths']['DATA_DIRECTORY'] = self.data_directory.get()
-            config['Paths']['OUTPUT_DIRECTORY'] = self.output_directory.get()
             
             # Get date values based on available widgets
             if tkcalendar_available and hasattr(self, 'start_date_picker'):
@@ -1550,6 +1868,37 @@ Select the time period on this tab and press the Run Analysis button to execute 
             for filter_key, var in self.analysis_filters.items():
                 # Only save to config if the variable still exists
                 config['ANALYSIS_FILTERS'][filter_key] = str(var.get())
+                
+            # Processing Options
+            if 'Processing' not in config:
+                config['Processing'] = {}
+                
+            # Save processing options
+            config['Processing']['USE_GPU'] = str(self.use_gpu.get())
+            config['Processing']['USE_DASK'] = str(self.use_dask.get())
+                
+            # AWS S3 settings
+            if 'AWS' not in config:
+                config['AWS'] = {}
+            
+            # Save AWS credentials and settings
+            config['AWS']['use_s3'] = str(self.use_s3.get())
+            config['AWS']['s3_data_uri'] = self.s3_data_uri.get()
+            # Keys authentication is the only supported method
+            config['AWS']['s3_auth_method'] = "keys"
+            config['AWS']['s3_access_key'] = self.s3_access_key.get()
+            config['AWS']['s3_secret_key'] = self.s3_secret_key.get()
+            
+            # Handle session token - very long tokens may cause issues with the config file
+            session_token = self.s3_session_token.get()
+            if len(session_token) > 1000:
+                logger.warning(f"Session token is very long ({len(session_token)} chars). Storing in config file.")
+                # We'll store it but warn the user that it may be better to use AWS credentials file
+            config['AWS']['s3_session_token'] = session_token
+            config['AWS']['s3_region'] = self.s3_region.get()
+            config['AWS']['s3_bucket_name'] = self.s3_bucket_name.get()
+            config['AWS']['s3_prefix'] = self.s3_prefix.get()
+            config['AWS']['s3_local_dir'] = self.s3_local_dir.get()
 
             # Write to file
             with open(config_path, 'w') as configfile:
@@ -1579,11 +1928,10 @@ Select the time period on this tab and press the Run Analysis button to execute 
                 messagebox.showerror("Error", "Please specify an S3 bucket name")
                 return
                 
-            # If using access keys, check for required fields
-            if not (self.s3_access_key.get() and self.s3_secret_key.get()) and not self.show_advanced_auth.get():
-                response = messagebox.askokcancel("Warning", "Access key and/or secret key not specified. Will attempt to use instance profile or environment variables.\n\nContinue anyway?")
-                if not response:
-                    return
+            # Check for required access keys
+            if not (self.s3_access_key.get() and self.s3_secret_key.get()):
+                messagebox.showerror("Error", "Both AWS Access Key and Secret Key are required")
+                return
         
         # Get the script directory for the config file path
         if getattr(sys, 'frozen', False):
@@ -1720,6 +2068,8 @@ Select the time period on this tab and press the Run Analysis button to execute 
                         # Special exit code 100 means user chose not to continue
                         # Close the entire application
                         progress_window.add_message("User chose not to continue. Closing application...")
+                        # Create message box to make sure the user understands the application is closing
+                        messagebox.showinfo("Closing Application", "The analysis is complete and you've chosen not to continue.\n\nThe application will now close.")
                         # Force destroy both windows to ensure complete exit
                         progress_window.destroy()
                         self.root.destroy()
@@ -1810,6 +2160,8 @@ Select the time period on this tab and press the Run Analysis button to execute 
                         batch_file.write(f"{full_cmd}\n")
                         batch_file.write(f"echo.\n")
                         batch_file.write(f"echo Process completed at %time%\n")
+                        batch_file.write(f"echo Press any key to continue...\n")
+                        batch_file.write(f"pause > nul\n")
                         
                         # Log the full command being executed
                         logger.info(f"Full command in batch file: {full_cmd}")
@@ -1819,6 +2171,7 @@ Select the time period on this tab and press the Run Analysis button to execute 
                     # Just display a message about the command window
                     progress_window.add_message(f"{script_filename} will now run in a command window.")
                     progress_window.add_message("Please monitor the command window for progress updates.")
+                    progress_window.add_message(f"After {script_filename} completes, press any key to close the command window.")
                     progress_window.add_message("\n--- Command Window Launched ---")
                     
                     # Set output directory for results access
@@ -1909,5 +2262,21 @@ def main():
     return root
 
 if __name__ == "__main__":
-    root = main()
-    root.mainloop()
+    # Set up basic root window first for messagebox to work
+    root = tk.Tk()
+    root.withdraw()  # Hide window initially
+    
+    # Check dependencies first
+    if check_dependencies():
+        # Destroy initial hidden window
+        root.destroy()
+        # Start the application normally
+        root = main()
+        root.mainloop()
+    else:
+        # If dependencies are missing and user didn't install them, exit
+        messagebox.showerror(
+            "Dependencies Missing",
+            "Cannot start application due to missing dependencies."
+        )
+        root.destroy()
