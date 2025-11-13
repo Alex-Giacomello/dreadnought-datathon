@@ -1,5 +1,12 @@
 # dreadnought-datathon
 
+# **12 NOV Updates**
+
+## MVP edition is out.  Should be ready to go.  Give it a try when you can.
+
+## Started LLM development
+-I've switched over to LLM development (in .dev) that is going slowly as I'm learning by doing with this one.
+
 # **7 NOV Updates**
 
 ## **Updates to .test**
