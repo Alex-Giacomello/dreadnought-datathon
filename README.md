@@ -18,7 +18,6 @@
 # Happy Thanksgiving!
 
 
-##Drop bugs into the BugDrop.md file in the Final Testing Folder
 
 
 # **12 NOV Updates**
