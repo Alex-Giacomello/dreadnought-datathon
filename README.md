@@ -2,20 +2,20 @@
 
 # **25 November SFD Beta Release**
 
-##The Beta version is out.  
+## The Beta version is out.  
 -SFD_Beta_Release is in the Final Testing Folder!
 -Test, test, and test some more
 -With the exception of the AI path predection module this is done.
 -There are lots of changes from the original so take a look at the README.md file
 
-##Drop bugs into the BugDrop.md file in the Final Testing Folder
+## Drop bugs into the BugDrop.md file in the Final Testing Folder
 
 
-##This is the version we should build the presentation with - there is a placeholder for teh AI Path generation already, so until we need to demo, we are GTG.
+## This is the version we should build the presentation with - there is a placeholder for teh AI Path generation already, so until we need to demo, we are GTG.
 
 
 
-#Happy Thanksgiving!
+# Happy Thanksgiving!
 
 
 ##Drop bugs into the BugDrop.md file in the Final Testing Folder
