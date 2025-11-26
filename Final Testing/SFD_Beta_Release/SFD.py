@@ -9,7 +9,7 @@ It identifies potential fraud patterns by analyzing daily ship movement data.
 Event = Datathon 2025
 
 Team = Dreadnaught
-Author = Chris Matherne
+Alex Giacomello, Christopher Matherne, Rupert Rigg, Zachary Zhao
 version = 2.1 Beta
  
 """
