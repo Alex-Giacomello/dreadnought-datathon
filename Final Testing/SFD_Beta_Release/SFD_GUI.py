@@ -4,10 +4,9 @@ AIS Shipping Fraud Detection System GUI
 Integrated version for SFD.py
 
 [VERSION]
-Event = Datathon 2025
 Team = Dreadnaught
-Author = Chris Matherne
-version = 2.0 MVP
+Alex Giacomello, Christopher Matherne, Rupert Rigg, Zachary Zhao
+version = 2.1 Beta
 """
 
 import os
