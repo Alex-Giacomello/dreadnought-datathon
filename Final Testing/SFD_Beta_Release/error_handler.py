@@ -2,6 +2,11 @@
 """
 Error Handler Module for SFD Project
 
+[VERSION}
+Team = Dreadnaught
+Alex Giacomello, Christopher Matherne, Rupert Rigg, Zachary Zhao
+version = 2.1 Beta
+
 This module provides standardized error handling capabilities
 for the Shipping Fraud Detection (SFD) project.
 """
