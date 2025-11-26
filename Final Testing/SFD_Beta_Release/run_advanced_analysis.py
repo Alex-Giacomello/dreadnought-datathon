@@ -120,7 +120,7 @@ def run_advanced_analysis():
         # Create tkinter root
         root = tk.Tk()
         root.title("SFD Advanced Analysis")
-        root.geometry("1280x800")
+        root.geometry("200x200")
         logger.info("Created tkinter root successfully")
         # Create and run the advanced analysis GUI
         # Make sure output_dir exists and create it if needed

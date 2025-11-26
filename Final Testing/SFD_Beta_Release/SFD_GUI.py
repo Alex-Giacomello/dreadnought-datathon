@@ -3,7 +3,7 @@
 AIS Shipping Fraud Detection System GUI
 Integrated version for SFD.py
 
-[VERSION]
+[VERSION}
 Team = Dreadnaught
 Alex Giacomello, Christopher Matherne, Rupert Rigg, Zachary Zhao
 version = 2.1 Beta

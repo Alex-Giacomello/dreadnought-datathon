@@ -5,9 +5,7 @@ AIS Shipping Fraud Detection System (Integrated Version)
 This module implements an anomaly detection system for shipping vessels using AIS data.
 It identifies potential fraud patterns by analyzing daily ship movement data.
 
-[VERSION]
-Event = Datathon 2025
-
+[VERSION}
 Team = Dreadnaught
 Alex Giacomello, Christopher Matherne, Rupert Rigg, Zachary Zhao
 version = 2.1 Beta

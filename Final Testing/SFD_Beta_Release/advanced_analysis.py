@@ -2825,11 +2825,8 @@ class AdvancedAnalysisGUI:
         self.parent_window = parent_window
         self.analysis = None  # Initialize to None for safety
         
-        # Create the main GUI window first so we can show errors properly
-        self.window = tk.Toplevel(parent_window)
-        self.window.title("Advanced Analytical Tools")
-        self.window.geometry("900x700")
-        self.window.minsize(800, 600)
+        # Window will be created after successful initialization of analysis
+        self.window = None
         
         try:
             # Resolve config path relative to script directory
@@ -2843,7 +2840,12 @@ class AdvancedAnalysisGUI:
             logger.error(traceback.format_exc())
             messagebox.showerror("Error", error_msg)
             
-            # Create a basic frame with error info instead of the normal interface
+            # Create an error window
+            self.window = tk.Toplevel(parent_window)
+            self.window.title("Advanced Analysis Error")
+            self.window.geometry("900x700")
+            
+            # Create a basic frame with error info
             main_frame = ttk.Frame(self.window, padding=10)
             main_frame.pack(fill=tk.BOTH, expand=True)
             
@@ -2903,9 +2905,15 @@ class AdvancedAnalysisGUI:
         
         # Create the GUI
         self.window = tk.Toplevel(parent_window)
-        self.window.title("Advanced Analytical Tools")
+        self.window.title("Advanced Analytical Tools GUI")
         self.window.geometry("900x700")
         self.window.minsize(800, 600)
+        
+        # Ensure this window appears in front of other windows
+        self.window.lift()
+        self.window.attributes('-topmost', True)
+        self.window.after(10, lambda: self.window.attributes('-topmost', False))
+        self.window.focus_force()
         
         main_frame = ttk.Frame(self.window, padding=10)
         main_frame.pack(fill=tk.BOTH, expand=True)
@@ -3055,19 +3063,752 @@ class AdvancedAnalysisGUI:
                 name = f'Other Type, Hazardous category {chr(64 + (i-90))}'
             self.ship_types[i] = {'name': name, 'var': tk.BooleanVar(value=True), 'category': category}
             
+    def add_zone(self):
+        """Add a new zone violation area - matches SFD_GUI implementation"""
+        self._show_zone_dialog()
+    
     def select_all_zones(self):
         """Select all zone violations"""
-        if self.zone_checkboxes:  # Check if there are any zones defined
-            for zone_info in self.zone_checkboxes.values():
-                if 'selected' in zone_info:
-                    zone_info['selected'].set(True)
+        for zone in self.zone_violations:
+            zone['is_selected'] = True
+            if zone['name'] in self.zone_checkboxes:
+                self.zone_checkboxes[zone['name']]['selected'].set(True)
+        self._save_zones_to_config()
     
     def deselect_all_zones(self):
         """Deselect all zone violations"""
-        if self.zone_checkboxes:  # Check if there are any zones defined
-            for zone_info in self.zone_checkboxes.values():
-                if 'selected' in zone_info:
-                    zone_info['selected'].set(False)
+        for zone in self.zone_violations:
+            zone['is_selected'] = False
+            if zone['name'] in self.zone_checkboxes:
+                self.zone_checkboxes[zone['name']]['selected'].set(False)
+        self._save_zones_to_config()
+                    
+    def _load_zones_from_config(self):
+        """Load zone definitions from config.ini"""
+        config = configparser.ConfigParser()
+        try:
+            config.read(self.analysis.config_path)
+            
+            # Reset the zones list
+            self.zone_violations = []
+            
+            if 'ZONE_VIOLATIONS' in config:
+                zone_indices = set()
+                # Find all zone indices
+                for key in config['ZONE_VIOLATIONS']:
+                    if key.startswith('zone_') and '_name' in key:
+                        try:
+                            zone_idx = int(key.split('_')[1])
+                            zone_indices.add(zone_idx)
+                        except (ValueError, IndexError):
+                            continue
+                
+                # Load each zone
+                for i in sorted(zone_indices):
+                    zone_key = f'zone_{i}'
+                    try:
+                        self.zone_violations.append({
+                            'name': config['ZONE_VIOLATIONS'][f'{zone_key}_name'],
+                            'lat_min': float(config['ZONE_VIOLATIONS'][f'{zone_key}_lat_min']),
+                            'lat_max': float(config['ZONE_VIOLATIONS'][f'{zone_key}_lat_max']),
+                            'lon_min': float(config['ZONE_VIOLATIONS'][f'{zone_key}_lon_min']),
+                            'lon_max': float(config['ZONE_VIOLATIONS'][f'{zone_key}_lon_max']),
+                            'is_selected': config.getboolean('ZONE_VIOLATIONS', f'{zone_key}_is_selected', fallback=True)
+                        })
+                    except (ValueError, KeyError, configparser.NoOptionError):
+                        continue
+                        
+            # If no zones were loaded, initialize with default zones
+            if not self.zone_violations:
+                self.zone_violations = [
+                    {'name': 'Strait of Hormuz', 'lat_min': 25.0, 'lat_max': 27.0, 'lon_min': 55.0, 'lon_max': 57.5, 'is_selected': True},
+                    {'name': 'South China Sea', 'lat_min': 5.0, 'lat_max': 25.0, 'lon_min': 105.0, 'lon_max': 120.0, 'is_selected': True}
+                ]
+        except Exception as e:
+            logger.error(f"Error loading zones from config: {e}")
+            # Default zones if loading fails
+            self.zone_violations = [
+                {'name': 'Strait of Hormuz', 'lat_min': 25.0, 'lat_max': 27.0, 'lon_min': 55.0, 'lon_max': 57.5, 'is_selected': True},
+                {'name': 'South China Sea', 'lat_min': 5.0, 'lat_max': 25.0, 'lon_min': 105.0, 'lon_max': 120.0, 'is_selected': True}
+            ]
+            
+    def _save_zones_to_config(self):
+        """Save zone definitions to config.ini"""
+        try:
+            config = configparser.ConfigParser()
+            config.read(self.analysis.config_path)
+            
+            # Ensure ZONE_VIOLATIONS section exists
+            if 'ZONE_VIOLATIONS' not in config:
+                config['ZONE_VIOLATIONS'] = {}
+            
+            # Remove existing zone entries
+            for key in list(config['ZONE_VIOLATIONS'].keys()):
+                if key.startswith('zone_'):
+                    del config['ZONE_VIOLATIONS'][key]
+            
+            # Add current zones
+            for i, zone in enumerate(self.zone_violations):
+                zone_key = f'zone_{i}'
+                config['ZONE_VIOLATIONS'][f'{zone_key}_name'] = zone['name']
+                config['ZONE_VIOLATIONS'][f'{zone_key}_lat_min'] = str(zone['lat_min'])
+                config['ZONE_VIOLATIONS'][f'{zone_key}_lat_max'] = str(zone['lat_max'])
+                config['ZONE_VIOLATIONS'][f'{zone_key}_lon_min'] = str(zone['lon_min'])
+                config['ZONE_VIOLATIONS'][f'{zone_key}_lon_max'] = str(zone['lon_max'])
+                config['ZONE_VIOLATIONS'][f'{zone_key}_is_selected'] = str(zone.get('is_selected', True))
+            
+            # Write back to file
+            with open(self.analysis.config_path, 'w') as configfile:
+                config.write(configfile)
+                
+        except Exception as e:
+            logger.error(f"Error saving zones to config: {e}")
+            messagebox.showerror("Error", f"Failed to save zones to config file: {e}")
+            
+    def _refresh_zone_list(self):
+        """Refresh the zone list display with checkboxes"""
+        # Ensure zone_violations is initialized
+        if not hasattr(self, 'zone_violations'):
+            self.zone_violations = []
+        
+        # Ensure zone_list_container exists
+        if not hasattr(self, 'zone_list_container'):
+            return
+        
+        # Clear existing zone frames
+        if hasattr(self, 'zone_checkboxes'):
+            for zone_name, zone_data in self.zone_checkboxes.items():
+                if 'frame' in zone_data and zone_data['frame'].winfo_exists():
+                    zone_data['frame'].destroy()
+            self.zone_checkboxes.clear()
+        else:
+            self.zone_checkboxes = {}
+        
+        if hasattr(self, 'zone_frames'):
+            self.zone_frames.clear()
+        else:
+            self.zone_frames = {}
+        
+        # Create checkbox for each zone
+        for i, zone in enumerate(self.zone_violations):
+            zone_name = zone['name']
+            
+            # Create frame for this zone
+            zone_item_frame = ttk.Frame(self.zone_list_container)
+            zone_item_frame.pack(side=tk.TOP, fill=tk.X, padx=10, pady=5)
+            self.zone_frames[zone_name] = zone_item_frame
+            
+            # Create BooleanVar for checkbox
+            selected_var = tk.BooleanVar(value=zone.get('is_selected', True))
+            
+            # Store checkbox
+            self.zone_checkboxes[zone_name] = {
+                'selected': selected_var,
+                'frame': zone_item_frame
+            }
+            
+            # Create checkbox
+            ttk.Checkbutton(zone_item_frame, text="Selected", variable=selected_var,
+                           command=lambda z=zone, v=selected_var: self._on_zone_selected_changed(z, v)).pack(side=tk.LEFT, padx=5)
+            
+            # Zone name and coordinates
+            zone_info = f"{zone_name} - Lat: [{zone.get('lat_min', 0.0):.2f}, {zone.get('lat_max', 0.0):.2f}], Lon: [{zone.get('lon_min', 0.0):.2f}, {zone.get('lon_max', 0.0):.2f}]"
+            ttk.Label(zone_item_frame, text=zone_info).pack(side=tk.LEFT, padx=10)
+            
+            # Edit button
+            ttk.Button(zone_item_frame, text="Edit", 
+                      command=lambda z=zone: self._edit_zone_by_name(z['name'])).pack(side=tk.RIGHT, padx=5)
+    
+    def _on_zone_selected_changed(self, zone, var):
+        """Handle selected checkbox change"""
+        zone['is_selected'] = var.get()
+        self._save_zones_to_config()
+        
+    def _edit_zone_by_name(self, zone_name):
+        """Edit zone by name"""
+        for zone in self.zone_violations:
+            if zone['name'] == zone_name:
+                self._show_zone_dialog(
+                    zone_index=self.zone_violations.index(zone),
+                    zone_name=zone['name'],
+                    lat_min=zone.get('lat_min', 0.0),
+                    lat_max=zone.get('lat_max', 0.0),
+                    lon_min=zone.get('lon_min', 0.0),
+                    lon_max=zone.get('lon_max', 0.0)
+                )
+                break
+                
+    def _update_zone_selection_in_memory(self, zone_name, is_selected):
+        """Update the selection status of a zone in memory"""
+        for zone in self.zone_violations:
+            if zone['name'] == zone_name:
+                zone['is_selected'] = is_selected
+                break
+        self._save_zones_to_config()
+        
+    def _draw_zone_dialog(self):
+        """Open a map for drawing a zone and capture coordinates"""
+        # Check if folium is available
+        try:
+            import folium
+            from folium.plugins import Draw
+            import webbrowser
+            import tempfile
+        except ImportError as e:
+            messagebox.showerror("Error", f"Required library not found: {e}\n\nPlease install folium: pip install folium")
+            return
+            
+        # Create a dialog to get the zone name first
+        pre_dialog = tk.Toplevel(self.window)
+        pre_dialog.title("New Zone")
+        pre_dialog.geometry("400x150")
+        pre_dialog.transient(self.window)
+        pre_dialog.grab_set()
+        
+        ttk.Label(pre_dialog, text="Enter a name for the new zone:").pack(pady=10)
+        name_var = tk.StringVar()
+        ttk.Entry(pre_dialog, textvariable=name_var, width=40).pack(pady=5)
+        
+        def proceed_to_map():
+            zone_name = name_var.get().strip()
+            if not zone_name:
+                messagebox.showerror("Error", "Please enter a zone name")
+                return
+                
+            # Close the name dialog
+            pre_dialog.destroy()
+            
+            # Now launch the map
+            self._launch_map_for_zone(zone_name)
+        
+        ttk.Button(pre_dialog, text="Continue", command=proceed_to_map).pack(side=tk.LEFT, padx=10, pady=10)
+        ttk.Button(pre_dialog, text="Cancel", command=pre_dialog.destroy).pack(side=tk.RIGHT, padx=10, pady=10)
+    
+    def _launch_map_for_zone(self, zone_name):
+        """Launch a map for drawing the zone with the given name"""
+        try:
+            import folium
+            from folium.plugins import Draw
+            import webbrowser
+            import tempfile
+        except ImportError:
+            return
+            
+        # Create map
+        m = folium.Map(location=[20, 0], zoom_start=2)
+        
+        # Add drawing tools
+        Draw(
+            export=True,
+            position='topleft',
+            draw_options={
+                'polyline': False,
+                'polygon': False,
+                'rectangle': True,
+                'circle': False,
+                'marker': False,
+                'circlemarker': False
+            }
+        ).add_to(m)
+        
+        # Add simple instructions
+        folium.Element("""
+        <div style="position:fixed;top:10px;right:10px;width:250px;background:white;padding:10px;z-index:9999;border:1px solid black;">
+            <h4>Instructions</h4>
+            <ol><li>Use rectangle tool to draw</li><li>Copy coordinates</li><li>Enter in the next dialog</li></ol>
+        </div>
+        <script>
+        setTimeout(function() {
+            var map = null;
+            for (var k in window) { if (window[k] && window[k]._container) { map = window[k]; break; } }
+            if (map) {
+                map.on('draw:created', function(e) {
+                    var b = e.layer.getBounds(), s = b.getSouth().toFixed(6), n = b.getNorth().toFixed(6),
+                        w = b.getWest().toFixed(6), e = b.getEast().toFixed(6),
+                        txt = s+','+n+','+w+','+e;
+                    alert('Coordinates: ' + txt + '\n\nPlease copy these values for the next dialog.');
+                });
+            }
+        }, 1000);
+        </script>
+        """).add_to(m)
+        
+        # Save and open
+        temp_file = os.path.join(tempfile.gettempdir(), 'zone_map.html')
+        m.save(temp_file)
+        webbrowser.open('file://' + temp_file)
+        
+        # Show dialog to enter coordinates
+        self._show_coord_entry_dialog(zone_name)
+    
+    def _show_coord_entry_dialog(self, zone_name):
+        """Show dialog to enter coordinates for the zone"""
+        dialog = tk.Toplevel(self.window)
+        dialog.title(f"Enter Coordinates for {zone_name}")
+        dialog.geometry("400x200")
+        dialog.transient(self.window)
+        dialog.grab_set()
+        
+        ttk.Label(dialog, text="Enter coordinates (lat_min,lat_max,lon_min,lon_max):").pack(pady=10)
+        coord_var = tk.StringVar()
+        ttk.Entry(dialog, textvariable=coord_var, width=40).pack(pady=5)
+        
+        def save_zone():
+            coords = coord_var.get().strip()
+            if not coords:
+                messagebox.showerror("Error", "Please enter coordinates")
+                return
+                
+            try:
+                parts = coords.split(',')
+                if len(parts) != 4:
+                    messagebox.showerror("Error", "Invalid format")
+                    return
+                    
+                lat_min = float(parts[0])
+                lat_max = float(parts[1])
+                lon_min = float(parts[2])
+                lon_max = float(parts[3])
+                
+                # Create the zone
+                zone_data = {
+                    'name': zone_name,
+                    'is_selected': True,
+                    'lat_min': lat_min,
+                    'lat_max': lat_max,
+                    'lon_min': lon_min,
+                    'lon_max': lon_max
+                }
+                self.zone_violations.append(zone_data)
+                self._refresh_zone_list()
+                self._save_zones_to_config()
+                dialog.destroy()
+            except (ValueError, IndexError):
+                messagebox.showerror("Error", "Invalid coordinate values")
+        
+        button_frame = ttk.Frame(dialog)
+        button_frame.pack(fill=tk.X, padx=10, pady=10)
+        ttk.Button(button_frame, text="Save", command=save_zone).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="Cancel", command=dialog.destroy).pack(side=tk.RIGHT, padx=5)
+        
+    def _delete_selected_zone(self):
+        """Delete the selected zone from the list"""
+        if not self.zone_checkboxes:
+            messagebox.showinfo("Info", "No zones available to delete.")
+            return
+            
+        # Find which zones are selected for deletion
+        zones_to_delete = []
+        for zone_name, checkbox_data in self.zone_checkboxes.items():
+            if checkbox_data.get('selected').get():
+                zones_to_delete.append(zone_name)
+        
+        if not zones_to_delete:
+            messagebox.showinfo("Info", "Please select at least one zone to delete.")
+            return
+        
+        # Confirm deletion
+        if len(zones_to_delete) == 1:
+            confirm = messagebox.askyesno("Confirm Delete", f"Are you sure you want to delete the zone '{zones_to_delete[0]}'?")
+        else:
+            confirm = messagebox.askyesno("Confirm Delete", f"Are you sure you want to delete the selected {len(zones_to_delete)} zones?")
+        
+        if confirm:
+            # Remove the zones
+            self.zone_violations = [zone for zone in self.zone_violations if zone['name'] not in zones_to_delete]
+            self._refresh_zone_list()
+            self._save_zones_to_config()
+        
+    def _show_zone_dialog(self, zone_index=None, zone_name='', lat_min=0.0, lat_max=0.0, lon_min=0.0, lon_max=0.0, is_selected=True):
+        """Show dialog to add or edit a zone"""
+        dialog = tk.Toplevel(self.window)
+        dialog.title("Add Zone" if zone_index is None else "Edit Zone")
+        dialog.geometry("400x300")
+        dialog.transient(self.window)
+        dialog.grab_set()
+        
+        # Create form
+        form_frame = ttk.Frame(dialog, padding=10)
+        form_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Zone name
+        ttk.Label(form_frame, text="Zone Name:").grid(row=0, column=0, padx=5, pady=5, sticky=tk.W)
+        name_var = tk.StringVar(value=zone_name)
+        ttk.Entry(form_frame, textvariable=name_var, width=30).grid(row=0, column=1, padx=5, pady=5, sticky=tk.W)
+        
+        # Coordinates
+        ttk.Label(form_frame, text="Latitude Min:").grid(row=1, column=0, padx=5, pady=5, sticky=tk.W)
+        lat_min_var = tk.DoubleVar(value=lat_min)
+        ttk.Entry(form_frame, textvariable=lat_min_var, width=15).grid(row=1, column=1, padx=5, pady=5, sticky=tk.W)
+        
+        ttk.Label(form_frame, text="Latitude Max:").grid(row=2, column=0, padx=5, pady=5, sticky=tk.W)
+        lat_max_var = tk.DoubleVar(value=lat_max)
+        ttk.Entry(form_frame, textvariable=lat_max_var, width=15).grid(row=2, column=1, padx=5, pady=5, sticky=tk.W)
+        
+        ttk.Label(form_frame, text="Longitude Min:").grid(row=3, column=0, padx=5, pady=5, sticky=tk.W)
+        lon_min_var = tk.DoubleVar(value=lon_min)
+        ttk.Entry(form_frame, textvariable=lon_min_var, width=15).grid(row=3, column=1, padx=5, pady=5, sticky=tk.W)
+        
+        ttk.Label(form_frame, text="Longitude Max:").grid(row=4, column=0, padx=5, pady=5, sticky=tk.W)
+        lon_max_var = tk.DoubleVar(value=lon_max)
+        ttk.Entry(form_frame, textvariable=lon_max_var, width=15).grid(row=4, column=1, padx=5, pady=5, sticky=tk.W)
+        
+        # Selected checkbox (for use in analysis)
+        is_selected_var = tk.BooleanVar(value=is_selected)
+        ttk.Checkbutton(form_frame, text="Selected (use in analysis)", variable=is_selected_var).grid(row=5, column=0, columnspan=2, padx=5, pady=5)
+        
+        # Draw Zone button
+        def draw_zone_from_dialog():
+            """Draw zone on map and populate coordinate fields"""
+            self._draw_zone_for_dialog(dialog, lat_min_var, lat_max_var, lon_min_var, lon_max_var)
+        
+        draw_button_frame = ttk.Frame(form_frame)
+        draw_button_frame.grid(row=6, column=0, columnspan=2, pady=5)
+        ttk.Button(draw_button_frame, text="Draw Zone on Map", command=draw_zone_from_dialog).pack(side=tk.LEFT, padx=5)
+        
+        # Save function
+        def save_zone():
+            name = name_var.get().strip()
+            if not name:
+                messagebox.showerror("Error", "Zone name is required.")
+                return
+            
+            try:
+                lat_min_val = lat_min_var.get()
+                lat_max_val = lat_max_var.get()
+                lon_min_val = lon_min_var.get()
+                lon_max_val = lon_max_var.get()
+            except ValueError:
+                messagebox.showerror("Error", "All coordinates must be valid numbers.")
+                return
+            
+            # Validate ranges
+            if lat_min_val >= lat_max_val:
+                messagebox.showerror("Error", "Latitude Min must be less than Latitude Max.")
+                return
+            
+            if lon_min_val >= lon_max_val:
+                messagebox.showerror("Error", "Longitude Min must be less than Longitude Max.")
+                return
+            
+            # Check for duplicate name (if editing, allow same name)
+            if zone_index is None:
+                for zone in self.zone_violations:
+                    if zone['name'] == name:
+                        messagebox.showerror("Error", f"Zone name '{name}' already exists.")
+                        return
+            
+            # Create or update zone
+            zone_data = {
+                'name': name,
+                'lat_min': lat_min_val,
+                'lat_max': lat_max_val,
+                'lon_min': lon_min_val,
+                'lon_max': lon_max_val,
+                'is_selected': is_selected_var.get()
+            }
+            
+            if zone_index is None:
+                # Add new zone
+                self.zone_violations.append(zone_data)
+            else:
+                # Update existing zone
+                self.zone_violations[zone_index] = zone_data
+            
+            # Refresh display
+            self._refresh_zone_list()
+            # Save to config.ini
+            self._save_zones_to_config()
+            dialog.destroy()
+        
+        # Buttons
+        button_frame = ttk.Frame(dialog, padding=10)
+        button_frame.pack(fill=tk.X, side=tk.BOTTOM)
+        
+        ttk.Button(button_frame, text="Save", command=save_zone).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="Cancel", command=dialog.destroy).pack(side=tk.RIGHT, padx=5)
+    
+    def _draw_zone_for_dialog(self, parent_dialog, lat_min_var, lat_max_var, lon_min_var, lon_max_var):
+        """Draw a zone on a map and populate coordinate fields in the dialog"""
+        try:
+            import folium
+            from folium.plugins import Draw
+            import webbrowser
+            import tempfile
+            import json
+        except ImportError as e:
+            messagebox.showerror("Error", f"Required library not found: {e}\n\nPlease install folium: pip install folium")
+            return
+        
+        # Create a map centered on a default location (middle of world)
+        m = folium.Map(location=[20, 0], zoom_start=2)
+        
+        # Add drawing tools
+        draw = Draw(
+            export=True,
+            filename='zone_draw_data.geojson',
+            position='topleft',
+            draw_options={
+                'polyline': False,
+                'polygon': False,
+                'rectangle': True,  # Enable rectangle drawing
+                'circle': False,
+                'marker': False,
+                'circlemarker': False
+            },
+            edit_options={'edit': True, 'remove': True}
+        )
+        draw.add_to(m)
+        
+        # Add instructions and coordinate display to the map
+        instructions_html = """
+        <div style="position: fixed; 
+                    top: 10px; right: 10px; width: 300px; height: 180px; 
+                    background-color: white; z-index:9999; 
+                    border: 2px solid grey; padding: 10px; border-radius: 5px;">
+            <h4 style="margin-top:0;">Draw Zone Instructions</h4>
+            <ol style="margin: 0; padding-left: 20px; font-size: 12px;">
+                <li>Click the rectangle tool in the toolbar (top-left)</li>
+                <li>Click and drag on the map to draw a rectangle</li>
+                <li>Coordinates will appear in the bottom-left box</li>
+                <li>Click "Copy Coordinates" to copy them</li>
+                <li>Return to the application and paste/enter them</li>
+            </ol>
+        </div>
+        <div id="coords-display" style="position: fixed; bottom: 10px; left: 10px; width: 400px; 
+            background-color: white; z-index:9999; border: 2px solid #007bff; 
+            padding: 15px; border-radius: 5px; font-family: Arial, sans-serif; 
+            box-shadow: 0 2px 10px rgba(0,0,0,0.3);">
+            <h4 style="margin-top:0;">Zone Coordinates</h4>
+            <p id="coords-text" style="font-size: 12px; color: #666;">Draw a rectangle on the map...</p>
+            <button id="copy-coords" style="margin-top: 10px; padding: 5px 10px; 
+                background-color: #007bff; color: white; border: none; border-radius: 3px; 
+                cursor: pointer;">Copy Coordinates</button>
+        </div>
+        """
+        m.get_root().html.add_child(folium.Element(instructions_html))
+        
+        # Add JavaScript to extract coordinates from drawn rectangles
+        extract_coords_js = folium.Element("""
+        <script>
+        // Wait for map and draw plugin to be initialized
+        setTimeout(function() {
+            // Find the map object (folium stores it in the window)
+            var mapObj = null;
+            for (var key in window) {
+                if (window[key] && window[key].hasOwnProperty && window[key].hasOwnProperty('_container')) {
+                    mapObj = window[key];
+                    break;
+                }
+            }
+            
+            // Alternative: try to get from Leaflet's global map registry
+            if (!mapObj && typeof L !== 'undefined') {
+                L.eachLayer = L.eachLayer || function(callback) {
+                    for (var id in this._layers) {
+                        callback(this._layers[id]);
+                    }
+                };
+                // Get the first map instance
+                for (var id in L._layers) {
+                    var layer = L._layers[id];
+                    if (layer instanceof L.Map) {
+                        mapObj = layer;
+                        break;
+                    }
+                }
+            }
+            
+            if (mapObj) {
+                // Listen for draw events
+                mapObj.on('draw:created', function(e) {
+                    var layer = e.layer;
+                    var bounds = layer.getBounds();
+                    var sw = bounds.getSouthWest();
+                    var ne = bounds.getNorthEast();
+                    
+                    var coords = {
+                        lat_min: sw.lat.toFixed(6),
+                        lat_max: ne.lat.toFixed(6),
+                        lon_min: sw.lng.toFixed(6),
+                        lon_max: ne.lng.toFixed(6)
+                    };
+                    
+                    var coordsText = 'Lat Min: ' + coords.lat_min + '<br>' +
+                                   'Lat Max: ' + coords.lat_max + '<br>' +
+                                   'Lon Min: ' + coords.lon_min + '<br>' +
+                                   'Lon Max: ' + coords.lon_max;
+                    
+                    var coordsTextEl = document.getElementById('coords-text');
+                    if (coordsTextEl) {
+                        coordsTextEl.innerHTML = coordsText;
+                    }
+                    
+                    // Store coordinates in a global variable for copying
+                    window.zoneCoords = coords;
+                });
+            }
+            
+            // Copy button functionality
+            var copyBtn = document.getElementById('copy-coords');
+            if (copyBtn) {
+                copyBtn.addEventListener('click', function() {
+                    if (window.zoneCoords) {
+                        var text = window.zoneCoords.lat_min + ',' + window.zoneCoords.lat_max + ',' +
+                                  window.zoneCoords.lon_min + ',' + window.zoneCoords.lon_max;
+                        if (navigator.clipboard && navigator.clipboard.writeText) {
+                            navigator.clipboard.writeText(text).then(function() {
+                                alert('Coordinates copied to clipboard!');
+                                // Close the browser window/tab after user clicks OK
+                                window.close();
+                            }).catch(function() {
+                                // Fallback for browsers without clipboard API
+                                var textarea = document.createElement('textarea');
+                                textarea.value = text;
+                                document.body.appendChild(textarea);
+                                textarea.select();
+                                document.execCommand('copy');
+                                document.body.removeChild(textarea);
+                                alert('Coordinates copied to clipboard!');
+                                // Close the browser window/tab after user clicks OK
+                                window.close();
+                            });
+                        } else {
+                            // Fallback for older browsers
+                            var textarea = document.createElement('textarea');
+                            textarea.value = text;
+                            document.body.appendChild(textarea);
+                            textarea.select();
+                            document.execCommand('copy');
+                            document.body.removeChild(textarea);
+                            alert('Coordinates copied to clipboard!');
+                            // Close the browser window/tab after user clicks OK
+                            window.close();
+                        }
+                    }
+                });
+            }
+        }, 2000);
+        </script>
+        """)
+        m.get_root().html.add_child(extract_coords_js)
+        
+        # Save map to temporary file
+        temp_dir = tempfile.gettempdir()
+        temp_map_file = os.path.join(temp_dir, 'zone_draw_map.html')
+        
+        # Open map in browser
+        webbrowser.open(f'file://{temp_map_file}')
+        
+        # Show dialog to get coordinates
+        coord_dialog = tk.Toplevel(parent_dialog)
+        coord_dialog.title("Enter Zone Coordinates from Map")
+        coord_dialog.geometry("500x300")
+        coord_dialog.transient(parent_dialog)
+        coord_dialog.grab_set()
+        
+        # Instructions
+        instructions = tk.Text(coord_dialog, height=6, wrap=tk.WORD, font=("Arial", 9))
+        instructions.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        instructions.insert('1.0', 
+            "Instructions:\n\n"
+            "1. A map has been opened in your browser\n"
+            "2. Use the rectangle tool in the map toolbar (top-left) to draw a zone\n"
+            "3. After drawing, coordinates will appear in the bottom-left box on the map\n"
+            "4. Click 'Copy Coordinates' button on the map to copy them\n"
+            "5. Paste the coordinates below (comma-separated: lat_min,lat_max,lon_min,lon_max)\n"
+            "   Or manually enter the coordinates in the fields below"
+        )
+        instructions.config(state=tk.DISABLED)
+        
+        # Paste coordinates frame
+        paste_frame = ttk.LabelFrame(coord_dialog, text="Paste Coordinates (comma-separated)")
+        paste_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        paste_var = tk.StringVar()
+        paste_entry = ttk.Entry(paste_frame, textvariable=paste_var, width=50)
+        paste_entry.pack(side=tk.LEFT, padx=5, pady=5)
+        
+        # Enable right-click context menu for paste entry
+        def create_context_menu(event):
+            """Create right-click context menu for the entry field"""
+            context_menu = tk.Menu(coord_dialog, tearoff=0)
+            context_menu.add_command(label="Cut", command=lambda: paste_entry.event_generate("<<Cut>>"))
+            context_menu.add_command(label="Copy", command=lambda: paste_entry.event_generate("<<Copy>>"))
+            context_menu.add_command(label="Paste", command=lambda: paste_entry.event_generate("<<Paste>>"))
+            context_menu.add_separator()
+            context_menu.add_command(label="Select All", command=lambda: paste_entry.select_range(0, tk.END))
+            try:
+                context_menu.tk_popup(event.x_root, event.y_root)
+            finally:
+                context_menu.grab_release()
+        
+        paste_entry.bind("<Button-3>", create_context_menu)  # Right-click on Windows/Linux
+        paste_entry.bind("<Button-2>", create_context_menu)  # Right-click on macOS
+        paste_entry.bind("<Control-Button-1>", create_context_menu)  # Control+Click on macOS
+        
+        def parse_pasted_coords():
+            """Parse pasted coordinates and fill in the fields"""
+            paste_text = paste_var.get().strip()
+            if not paste_text:
+                return
+            
+            try:
+                coords = [float(x.strip()) for x in paste_text.split(',')]
+                if len(coords) == 4:
+                    lat_min_var.set(coords[0])
+                    lat_max_var.set(coords[1])
+                    lon_min_var.set(coords[2])
+                    lon_max_var.set(coords[3])
+                    messagebox.showinfo("Success", "Coordinates parsed and filled in!")
+                    coord_dialog.destroy()
+                else:
+                    messagebox.showerror("Error", "Please enter 4 comma-separated values: lat_min,lat_max,lon_min,lon_max")
+            except ValueError:
+                messagebox.showerror("Error", "Invalid format. Please enter: lat_min,lat_max,lon_min,lon_max")
+        
+        ttk.Button(paste_frame, text="Parse & Fill", command=parse_pasted_coords).pack(side=tk.LEFT, padx=5, pady=5)
+        
+        # Buttons
+        button_frame = ttk.Frame(coord_dialog)
+        button_frame.pack(fill=tk.X, padx=10, pady=10)
+        ttk.Button(button_frame, text="Close", command=coord_dialog.destroy).pack(side=tk.LEFT, padx=5)
+    
+    def _delete_selected_zone(self):
+        """Delete the selected zone from the list"""
+        if not self.zone_checkboxes:
+            messagebox.showinfo("Info", "No zones available to delete.")
+            return
+            
+        # Find which zone is currently selected in the UI
+        selected_zones = [name for name, data in self.zone_checkboxes.items() 
+                         if 'selected' in data and data['selected'].get()]
+        
+        if not selected_zones:
+            messagebox.showinfo("Info", "Please select a zone to delete.")
+            return
+            
+        # If multiple zones are selected, ask which one to delete
+        zone_to_delete = selected_zones[0] if len(selected_zones) == 1 else \
+                        simpledialog.askstring("Select Zone", "Which zone do you want to delete?",
+                                              initialvalue=selected_zones[0])
+        
+        if not zone_to_delete or zone_to_delete not in self.zone_checkboxes:
+            return
+            
+        # Confirm deletion
+        if not messagebox.askyesno("Confirm Deletion", f"Are you sure you want to delete the zone '{zone_to_delete}'?"):
+            return
+            
+        # Remove from data structures
+        for i, zone in enumerate(self.zone_violations):
+            if zone['name'] == zone_to_delete:
+                del self.zone_violations[i]
+                break
+                
+        # Refresh the display
+        self._refresh_zone_list()
+        self._save_zones_to_config()
     
     def reset_analysis_filters_to_defaults(self):
         """Reset analysis filters to default values"""
@@ -3205,6 +3946,14 @@ class AdvancedAnalysisGUI:
         ttk.Button(frame4, text="Create Filtered Map", width=30,
                   command=self._create_filtered_map_dialog).pack(side=tk.LEFT, padx=5)
         ttk.Label(frame4, text="Create path/anomaly/heat-maps with filters", 
+                 wraplength=500).pack(side=tk.LEFT, padx=5)
+        
+        # Add a Generate Map button
+        frame4b = ttk.Frame(tab)
+        frame4b.pack(fill=tk.X, pady=5)
+        ttk.Button(frame4b, text="Generate Map", width=30,
+                  command=lambda: self._generate_map()).pack(side=tk.LEFT, padx=5)
+        ttk.Label(frame4b, text="Generate a map with the current dataset", 
                  wraplength=500).pack(side=tk.LEFT, padx=5)
     
     def _create_tab4_vessel_analysis(self):
@@ -3865,6 +4614,58 @@ class AdvancedAnalysisGUI:
         
         ttk.Button(dialog, text="Create Map", command=create_map).pack(pady=10)
     
+    def _generate_map(self):
+        """Generate a map with the current dataset"""
+        dialog = tk.Toplevel(self.window)
+        dialog.title("Generate Map")
+        dialog.geometry("400x250")
+        dialog.transient(self.window)
+        dialog.grab_set()
+        
+        # Map type selection
+        type_frame = ttk.Frame(dialog, padding=5)
+        type_frame.pack(fill=tk.X, padx=10, pady=5)
+        ttk.Label(type_frame, text="Map Type:").pack(side=tk.LEFT, padx=5)
+        
+        map_type_var = tk.StringVar(value='path')
+        ttk.Radiobutton(type_frame, text="Path Map", variable=map_type_var, value='path').pack(side=tk.LEFT, padx=5)
+        ttk.Radiobutton(type_frame, text="Anomaly Map", variable=map_type_var, value='anomaly').pack(side=tk.LEFT, padx=5)
+        ttk.Radiobutton(type_frame, text="Heatmap", variable=map_type_var, value='heatmap').pack(side=tk.LEFT, padx=5)
+        
+        # Generate map function
+        def do_generate_map():
+            dialog.destroy()
+            progress = ProgressDialog(self.window, "Creating Map", f"Generating {map_type_var.get()} map...")
+            try:
+                self.status_var.set("Generating map...")
+                result = self.analysis.create_filtered_map(
+                    map_type=map_type_var.get(),
+                    vessel_types=None,  # Use all vessel types
+                    anomaly_types=None,  # Use all anomaly types
+                    vessel_mmsi=None,    # No specific vessel
+                    output_path=None     # Use default output path
+                )
+                progress.close()
+                if result:
+                    self.status_var.set(f"Map created: {result}")
+                    messagebox.showinfo("Success", f"Map created successfully:\n{result}")
+                    # Open the map file
+                    open_file(result)
+                else:
+                    self.status_var.set("Map creation failed")
+                    messagebox.showerror("Error", "Failed to create map. Check logs for details.")
+            except Exception as e:
+                progress.close()
+                self.status_var.set("Map creation failed")
+                logger.error(f"Error creating map: {e}")
+                messagebox.showerror("Error", f"Map creation failed: {str(e)}")
+        
+        # Add button to generate
+        button_frame = ttk.Frame(dialog, padding=10)
+        button_frame.pack(fill=tk.X, side=tk.BOTTOM)
+        ttk.Button(button_frame, text="Generate Map", command=do_generate_map).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="Cancel", command=dialog.destroy).pack(side=tk.RIGHT, padx=5)
+    
     def _create_vessel_map_dialog(self):
         mmsi_str = self.vessel_mmsi_var.get()
         if not mmsi_str:
@@ -4280,26 +5081,57 @@ class AdvancedAnalysisGUI:
         zones_frame = ttk.Frame(self.notebook, padding=10)
         self.notebook.add(zones_frame, text="Zone Violations")
         
-        # Header
-        ttk.Label(zones_frame, text="Define Restricted Zones", 
-                font=("", 12, "bold")).pack(anchor=tk.W, pady=(0, 10))
+        # Top section: Buttons
+        button_frame = ttk.Frame(zones_frame)
+        button_frame.pack(side=tk.TOP, fill=tk.X, padx=5, pady=10)
         
-        # Info text
-        ttk.Label(zones_frame, text="Define geographic zones where vessel presence constitutes a violation. "
-                                    "Any vessel entering these zones will trigger a 'Zone Violation' alert.", 
-                wraplength=850, justify=tk.LEFT).pack(fill=tk.X, pady=(0, 10))
+        # Add zone button - exactly like SFD_GUI.py
+        ttk.Button(button_frame, text="Add Zone", command=self.add_zone).pack(side=tk.LEFT, padx=5, pady=5)
         
-        # Create content frame
-        content_frame = ttk.Frame(zones_frame)
-        content_frame.pack(fill=tk.BOTH, expand=True)
+        # Middle section: Zone list with checkboxes
+        list_frame = ttk.LabelFrame(zones_frame, text="Restricted Zones")
+        list_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True, padx=10, pady=10)
         
-        # Create zones list frame (left)
-        zones_list_frame = ttk.LabelFrame(content_frame, text="Restricted Zones")
-        zones_list_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 10), pady=5)
+        # Create a canvas with scrollbar for the zone list
+        canvas = tk.Canvas(list_frame, width=750)
+        scrollbar = ttk.Scrollbar(list_frame, orient="vertical", command=canvas.yview)
+        scrollable_frame = ttk.Frame(canvas)
         
-        self.zones_list_widget = tk.Listbox(zones_list_frame, selectmode=tk.SINGLE, height=10)
-        self.zones_list_widget.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
-        zones_scrollbar = ttk.Scrollbar(zones_list_frame, orient=tk.VERTICAL, command=self.zones_list_widget.yview)
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+        
+        # Store zone checkboxes and frames
+        self.zone_checkboxes = {}
+        self.zone_frames = {}
+        
+        # Zone list container
+        self.zone_list_container = scrollable_frame
+        
+        # Add "Select All" buttons at the top
+        select_button_frame = ttk.Frame(scrollable_frame)
+        select_button_frame.pack(side=tk.TOP, fill=tk.X, padx=5, pady=5)
+        ttk.Button(select_button_frame, text="Select All", command=self.select_all_zones).pack(side=tk.LEFT, padx=5)
+        ttk.Button(select_button_frame, text="Deselect All", command=self.deselect_all_zones).pack(side=tk.LEFT, padx=5)
+        
+        # Load zones from config.ini
+        self._load_zones_from_config()
+        
+        # Refresh zone list display
+        self._refresh_zone_list()
+        
+        # Description
+        desc_label = ttk.Label(zones_frame, 
+                            text="Manage restricted zones for Zone Violation detection. Check 'Selected' to include in analysis.",
+                            font=("Arial", 9))
+        desc_label.pack(side=tk.BOTTOM, fill=tk.X, padx=5, pady=5)
         
     def _create_tab8_vessel_selection(self):
         """Create the Vessel Selection tab with checkboxes for each ship type"""
