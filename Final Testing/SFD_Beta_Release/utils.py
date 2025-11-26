@@ -2,6 +2,11 @@
 """
 Shared Utilities Module for SFD Project
 
+[VERSION}
+Team = Dreadnaught
+Alex Giacomello, Christopher Matherne, Rupert Rigg, Zachary Zhao
+version = 2.1 Beta
+
 This module contains common utility functions used across the SFD project components.
 It centralizes duplicated code to improve maintainability and consistency.
 """
