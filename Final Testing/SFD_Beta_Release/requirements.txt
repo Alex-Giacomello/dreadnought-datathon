@@ -1,3 +1,10 @@
+# Requirements to install and run the AIS Shipping Froud Detection System (SFD )
+
+# [VERSION}
+# Team = Dreadnaught
+# Alex Giacomello, Christopher Matherne, Rupert Rigg, Zachary Zhao
+# version = 2.1 Beta
+
 # Core data processing and analysis
 pandas>=1.3.0
 numpy>=1.20.0
@@ -36,7 +43,7 @@ pywin32>=300 ; platform_system=='Windows'
 
 # GPU support (RAPIDS ecosystem)
 # Note: Higher versions (25.x+) require conda installation
-# These are pip-installable fallback versions
+# These are pip-installable fallback versions - Uncomment for systems with supported GPUs
 
 # NVIDIA CUDA support
 # cudf<1.0  # GPU-accelerated DataFrame
