@@ -1,6 +1,6 @@
 # dreadnought-datathon
 
-# **25 November SFD Beta Release**
+# **25 November SFD Beta 2.1 Release**
 
 ## The Beta version is out.  
 -SFD_Beta_Release is in the Final Testing Folder!
