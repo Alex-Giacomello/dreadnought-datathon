@@ -2,6 +2,11 @@
 """
 Map Utilities Module for SFD Project
 
+[VERSION}
+Team = Dreadnaught
+Alex Giacomello, Christopher Matherne, Rupert Rigg, Zachary Zhao
+version = 2.1 Beta
+
 This module contains map-related utilities and classes for the SFD project,
 including coordinate management and map display functions.
 """
