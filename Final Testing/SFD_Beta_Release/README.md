@@ -1,6 +1,6 @@
 # AIS Shipping Fraud Detection System
 
-
+*Version 2.1 Beta - Updated  26 November 2025 1040*
 
 ## Table of Contents
 
@@ -14,6 +14,7 @@
 8. [Anomaly Types Explained](#anomaly-types-explained)
 9. [Output Files](#output-files)
 10. [Troubleshooting](#troubleshooting)
+11. [What's New in Version 2.1](#whats-new-in-version-21)
 
 ---
 
@@ -44,6 +45,7 @@ The AIS Shipping Fraud Detection System analyzes Automatic Identification System
 - Python 3.8 or higher (Python 3.14 fully supported)
 - Windows, Linux, or macOS
 - Internet connection (for NOAA data downloads)
+- GPU support: NVIDIA CUDA or AMD ROCm (optional, for acceleration)
 
 ### Step 1: Install Dependencies
 
@@ -52,6 +54,15 @@ Install all required Python packages:
 ```bash
 pip install -r requirements.txt
 ```
+
+The requirements.txt file includes all necessary dependencies including:
+- Core libraries: pandas, numpy, dask, scipy, scikit-learn
+- Visualization: matplotlib, seaborn, plotly, folium
+- Data handling: pyarrow, requests, openpyxl, xlsxwriter
+- AWS integration: boto3, botocore, s3fs
+- System utilities: psutil
+- GUI enhancements: Pillow, tkcalendar
+- Optional GPU support libraries
 
 **Note for Linux users:** You may need to install tkinter separately:
 ```bash
@@ -354,7 +365,7 @@ Each zone displays:
 
 #### Creating a New Zone
 
-You can create zones using two methods: **Manual Input** or **Draw on Map**. Both methods are accessed through the "Add Zone" button.
+You can create zones using two methods: **Manual Input** or **Draw on Map**. Both methods are accessed through the "Add Zone" button. The Draw on Map feature is enhanced in version 2.1 with improved map controls, more precise coordinate selection, and interactive coordinate display.
 
 ##### Method 1: Manual Input
 
@@ -1017,6 +1028,12 @@ zone_0_lon_max = 57.5
 zone_0_is_selected = False
 ```
 
+### Section Descriptions
+
+See the old SFDREADME.md for detailed descriptions of each configuration section. The structure remains the same, but some deprecated options have been removed.
+
+---
+
 ## Anomaly Types Explained
 
 ### 1. AIS Beacon Off
@@ -1186,6 +1203,7 @@ After running an analysis, the following files may be generated in the output di
 - **sfd.log** - Analysis log file (from SFD.py)
 - **ais_fraud_detection_gui.log** - GUI log file (from SFD_GUI.py)
 - **advanced_analysis.log** - Advanced analysis log file (from advanced_analysis.py)
+- **advanced_analysis_standalone.log** - Log file for standalone advanced analysis operations
 
 ### Temporary Files:
 
@@ -1290,12 +1308,10 @@ pip install -r requirements.txt
 
 ## License and Credits
 
-**Version:** Beta
-**Team:** Dreadnaught  
-**Authors:** Alex Giacomello, Christopher Matherne, Rupert Rigg, Zachary Zhao
-
-
-**Event:** Datathon 2025
+[VERSION}
+Team = Dreadnaught
+Alex Giacomello, Christopher Matherne, Rupert Rigg, Zachary Zhao
+version = 2.1 Beta
 
 This software is provided as-is for the Datathon 2025 event.
 
@@ -1310,6 +1326,51 @@ This software is provided as-is for the Datathon 2025 event.
 - **NOAA AIS Data:** See NOAA AIS data documentation for data format and availability
 
 ---
+
+## What's New in Version 2.1
+
+### Major Enhancements
+
+#### 1. Zone Violation Feature Improvements
+- **Draw Zone on Map**: Added ability to draw zones directly on an interactive map
+- **Improved Zone Management**: Enhanced UI for creating, editing, and managing zones
+- **Selected Zones**: Added "Selected" status to include/exclude zones from analysis
+- **New Default Zones**: Added pre-configured zones including Cuban territorial waters
+
+#### 2. Advanced Analysis Improvements
+- **Enhanced Anomaly Detection**: Improved algorithms for more accurate detection
+- **Better Performance**: Optimized processing for faster analysis
+- **Memory Management**: Improved handling of large datasets
+
+#### 3. Data Processing Enhancements
+- **NOAA Data Integration**: Better handling of NOAA data sources
+- **Conversion Process**: Improved CSV to Parquet conversion with progress monitoring
+- **Cache Management**: Better management of temporary files and cache
+
+#### 4. User Interface Updates
+- **Improved Progress Display**: Enhanced progress window for downloads and conversions
+- **Better Status Messages**: More informative status messages during processing
+- **Context Menus**: Added right-click context menus in various parts of the UI
+
+#### 5. Dependencies and Requirements
+- **Updated Requirements**: Comprehensive requirements.txt with all dependencies
+- **Better Compatibility**: Enhanced compatibility with Python 3.14
+- **GPU Support**: Improved detection and utilization of GPU resources
+
+### Bug Fixes
+
+- Fixed issues with zone coordinate validation
+- Resolved memory leaks during large dataset processing
+- Fixed threading issues in the UI during long operations
+- Improved error handling for network connectivity issues
+- Fixed AWS S3 connectivity and authentication problems
+
+### Developer Notes
+
+- Refactored codebase for better maintainability
+- Added comprehensive logging throughout the application
+- Improved code documentation
+- Standardized version information across modules
 
 **End of README**
 
