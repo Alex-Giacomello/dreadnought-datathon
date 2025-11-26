@@ -2,6 +2,11 @@
 """
 Thread Manager Module for SFD Project
 
+[VERSION}
+Team = Dreadnaught
+Alex Giacomello, Christopher Matherne, Rupert Rigg, Zachary Zhao
+version = 2.1 Beta
+
 This module provides a thread management system for the SFD project,
 ensuring proper thread creation, monitoring, and cleanup.
 """
