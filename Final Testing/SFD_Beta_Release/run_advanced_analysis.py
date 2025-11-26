@@ -2,6 +2,11 @@
 """
 Run Advanced Analysis Standalone Script
 
+[VERSION}
+Team = Dreadnaught
+Alex Giacomello, Christopher Matherne, Rupert Rigg, Zachary Zhao
+version = 2.1 Beta
+
 This script directly launches the Advanced Analysis GUI without going through the main SFD_GUI.
 It uses data from the specified output directory and the .ais.cache_data directories.
 """
