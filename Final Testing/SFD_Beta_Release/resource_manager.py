@@ -2,6 +2,11 @@
 """
 Resource Manager Module for SFD Project
 
+[VERSION}
+Team = Dreadnaught
+Alex Giacomello, Christopher Matherne, Rupert Rigg, Zachary Zhao
+version = 2.1 Beta
+
 This module provides resource management capabilities for the SFD project,
 including memory monitoring, file handles, and other system resources.
 """
