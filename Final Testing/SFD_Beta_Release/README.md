@@ -1296,9 +1296,11 @@ pip install -r requirements.txt
 
 ## License and Credits
 
-**Version:** 2.0 MVP  
+**Version:** Beta
 **Team:** Dreadnaught  
-**Authors:** Chris Matherne, Zhoang, Alex 
+**Authors:** Alex Giacomello, Christopher Matherne, Rupert Rigg, Zachary Zhao
+
+
 **Event:** Datathon 2025
 
 This software is provided as-is for the Datathon 2025 event.
