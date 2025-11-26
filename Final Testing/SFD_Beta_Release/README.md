@@ -1017,12 +1017,6 @@ zone_0_lon_max = 57.5
 zone_0_is_selected = False
 ```
 
-### Section Descriptions
-
-See the old SFDREADME.md for detailed descriptions of each configuration section. The structure remains the same, but some deprecated options have been removed.
-
----
-
 ## Anomaly Types Explained
 
 ### 1. AIS Beacon Off
