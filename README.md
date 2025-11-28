@@ -1,5 +1,9 @@
 # dreadnought-datathon
 
+# **28 November SFD Beta 2.1 update**
+ -I cleaned out a lot of "dead wood" on this repository to ensure that old code wasn't gettingmixed up with new.c
+The "best_model.pt" file can't upload to github - it IS in the teams channel, it needs to be copied into the ~/mol_course-prediction/models/trained/ directory for everything to work correctly.
+
 # **25 November SFD Beta 2.1 Release**
 
 ## The Beta version is out.  
